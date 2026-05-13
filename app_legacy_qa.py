@@ -390,11 +390,21 @@ def generar_pdf(record: dict) -> bytes:
     story.append(Paragraph("DETALLE DE CAUSAS POR CRITERIO", sec))
     story.append(Spacer(1,0.3*cm))
     hay_causas = False
+    # Causas Producto
     for crit in CRITERIOS_PROD:
         d = record["prod_data"][crit]
         if d["status"] == "NC" and d.get("causas"):
             hay_causas = True
             img = make_pie_causas(crit, CAUSAS.get(crit, []), d["causas"], d["qty"], total)
+            if img:
+                story.append(Image(img, width=15*cm, height=7*cm))
+                story.append(Spacer(1,0.3*cm))
+    # Causas Materiales
+    for crit in CRITERIOS_MAT:
+        d = record["mat_data"][crit]
+        if d["status"] == "NC" and d.get("causas"):
+            hay_causas = True
+            img = make_pie_causas(crit, CAUSAS_MAT.get(crit, []), d["causas"], d["qty"], total)
             if img:
                 story.append(Image(img, width=15*cm, height=7*cm))
                 story.append(Spacer(1,0.3*cm))
