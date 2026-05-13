@@ -544,14 +544,20 @@ def render_form():
         try:
             save_to_supabase(record)
             st.session_state["ultimo_record"] = record
+            st.session_state["guardado_ok"] = True
             # Limpiar formulario para nuevo registro
-            keys_to_clear = [k for k in st.session_state.keys() if k != "ultimo_record"]
+            keys_to_clear = [k for k in st.session_state.keys() 
+                           if k not in ["ultimo_record", "guardado_ok"]]
             for k in keys_to_clear:
                 del st.session_state[k]
-            st.success("✅ Guardado correctamente. Formulario listo para nuevo registro.")
             st.rerun()
         except Exception as e:
             st.error(f"❌ Error al guardar: {e}")
+    
+    # Mostrar mensaje de éxito después del rerun
+    if st.session_state.get("guardado_ok"):
+        st.success("✅ ¡Checklist guardado correctamente! Puedes llenar uno nuevo.")
+        st.session_state["guardado_ok"] = False
 
 # ═══════════════════════════════════════════
 # 📈  HISTORIAL + PDF
