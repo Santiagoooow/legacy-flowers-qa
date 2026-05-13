@@ -281,13 +281,55 @@ def generar_pdf(record: dict) -> bytes:
                          backColor=rl_r, fontSize=11, spaceAfter=4, spaceBefore=10,
                          leftIndent=4, borderPadding=(4,4,4,4))
 
-    # — Portada
-    story.append(Paragraph("🌹 LEGACY FLOWERS",
-        ParagraphStyle("t", parent=styles["Title"], textColor=rl_r, fontSize=15, spaceAfter=4)))
-    story.append(Paragraph(
-        "Lista de Chequeo — Aseguramiento de Calidad<br/>Producto Terminado en Finca",
-        ParagraphStyle("s", parent=styles["Normal"], fontSize=11, textColor=rl_r,
-                       spaceAfter=8, fontName="Helvetica-Bold")))
+    # — Portada con logo igual al Excel
+    import os
+    logo_path = "Legaci_flowers.png"
+    
+    # Tabla de encabezado: Logo | Título | Consecutivo/Fecha
+    try:
+        consecutivo_pdf = record.get("consecutivo", "001")
+    except:
+        consecutivo_pdf = "001"
+    
+    header_content = []
+    if os.path.exists(logo_path):
+        header_content.append(Image(logo_path, width=5*cm, height=1.8*cm))
+    else:
+        header_content.append(Paragraph("🌹 LEGACY FLOWERS",
+            ParagraphStyle("t", parent=styles["Title"], textColor=rl_r, fontSize=13)))
+    
+    header_data = [[
+        header_content[0],
+        Paragraph("Lista de Chequeo Aseguramiento de Calidad<br/><b>Producto Terminado en Finca</b>",
+                  ParagraphStyle("hdr", parent=styles["Normal"], fontSize=11, textColor=rl_r,
+                                 fontName="Helvetica-Bold", alignment=1)),
+        Table([
+            ["Consecutivo:", consecutivo_pdf],
+            ["Versión:", "001"],
+            ["Fecha:", record["fecha"]],
+            ["Página:", "1 de 1"],
+        ], colWidths=[2.5*cm, 2.5*cm],
+        style=TableStyle([
+            ("FONTSIZE",(0,0),(-1,-1),8),
+            ("GRID",(0,0),(-1,-1),0.5,colors.grey),
+            ("BACKGROUND",(0,0),(0,-1),rl_g),
+            ("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),
+            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("PADDING",(0,0),(-1,-1),3),
+        ]))
+    ]]
+    
+    t_header = Table(header_data, colWidths=[5.5*cm, 7*cm, 5.5*cm])
+    t_header.setStyle(TableStyle([
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("BOX",(0,0),(-1,-1),1,colors.black),
+        ("INNERGRID",(0,0),(-1,-1),0.5,colors.grey),
+        ("PADDING",(0,0),(-1,-1),6),
+    ]))
+    story.append(t_header)
+    story.append(Paragraph("F-CHK-PTF-001-V01",
+        ParagraphStyle("cod", parent=styles["Normal"], fontSize=8,
+                       alignment=0, spaceAfter=8, textColor=colors.grey)))
     story.append(HRFlowable(width="100%", thickness=2, color=rl_r, spaceAfter=10))
 
     meta = [
@@ -399,8 +441,8 @@ def render_header():
     hoy = datetime.now().strftime("%d/%m/%Y")
     c1,c2,c3 = st.columns([0.8,2,1])
     with c1:
-        try: st.image("logo.png", width=110)
-        except: st.write("")
+        try: st.image("Legaci_flowers.png", width=160)
+        except: st.write("🌹 Legacy Flowers")
     with c2:
         st.markdown("<h2 class='title-red'>Lista de Chequeo Aseguramiento de Calidad<br>"
                     "Producto Terminado en Finca</h2>", unsafe_allow_html=True)
@@ -606,19 +648,41 @@ def render_dashboard():
                           "total_fallas","porc_c","porc_nc"]], use_container_width=True)
         st.session_state["df_periodo"] = df
 
-    if "df_periodo" in st.session_state and st.button("📄 Generar PDF consolidado del periodo"):
+    if "df_periodo" in st.session_state:
         df = st.session_state["df_periodo"]
-        with st.spinner("Generando PDF…"):
-            from pypdf import PdfWriter, PdfReader
-            writer = PdfWriter()
-            for _,row in df.iterrows():
-                rec = _row_to_record(row.to_dict())
-                for page in PdfReader(io.BytesIO(generar_pdf(rec))).pages:
-                    writer.add_page(page)
-            out = io.BytesIO(); writer.write(out); pdf_final = out.getvalue()
-        nombre = f"QA_Periodo_{fi}_{ff}.pdf".replace(" ","_")
-        st.download_button("⬇️ Descargar PDF del periodo", data=pdf_final,
-                           file_name=nombre, mime="application/pdf", use_container_width=True)
+        st.markdown("**Selecciona qué PDF generar:**")
+        col_a, col_b = st.columns(2)
+        
+        with col_a:
+            # PDF de un registro específico
+            opciones = [f"{row['fecha']} | {row['finca']} | {row['auditor']}" 
+                       for _, row in df.iterrows()]
+            seleccionado = st.selectbox("📋 PDF de un registro específico:", opciones, key="sel_registro")
+            if st.button("📥 Generar PDF del registro seleccionado"):
+                idx_sel = opciones.index(seleccionado)
+                rec = _row_to_record(df.iloc[idx_sel].to_dict())
+                with st.spinner("Generando PDF…"):
+                    pdf = generar_pdf(rec)
+                nombre = f"QA_{rec['finca']}_{rec['fecha']}.pdf".replace(" ","_")
+                st.download_button("⬇️ Descargar PDF", data=pdf,
+                                   file_name=nombre, mime="application/pdf",
+                                   use_container_width=True, key="dl_individual")
+        
+        with col_b:
+            # PDF consolidado del periodo
+            if st.button("📄 Generar PDF consolidado del periodo"):
+                with st.spinner("Generando PDF…"):
+                    from pypdf import PdfWriter, PdfReader
+                    writer = PdfWriter()
+                    for _,row in df.iterrows():
+                        rec = _row_to_record(row.to_dict())
+                        for page in PdfReader(io.BytesIO(generar_pdf(rec))).pages:
+                            writer.add_page(page)
+                    out = io.BytesIO(); writer.write(out); pdf_final = out.getvalue()
+                nombre = f"QA_Periodo_{fi}_{ff}.pdf".replace(" ","_")
+                st.download_button("⬇️ Descargar PDF del periodo", data=pdf_final,
+                                   file_name=nombre, mime="application/pdf",
+                                   use_container_width=True, key="dl_periodo")
 
 # ═══════════════════════════════════════════
 # 🚀  MAIN
