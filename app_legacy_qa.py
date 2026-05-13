@@ -28,9 +28,19 @@ from reportlab.platypus import (
 st.set_page_config(page_title="Legacy Flowers QA", page_icon="🌹",
                    layout="wide", initial_sidebar_state="collapsed")
 
-ROJO  = "#c00000"
+ROJO  = "#c00000"   # se mantiene en app
 VERDE = "#2e7d32"
 GRIS  = "#d9d9d9"
+
+# Paleta PDF corporativa
+PDF_AZUL      = "#1a3a5c"   # azul oscuro encabezados
+PDF_AZUL_MED  = "#2e6da4"   # azul medio secciones
+PDF_AZUL_CLAR = "#d6e4f0"   # azul muy claro filas alternas
+PDF_NC        = "#c0392b"   # rojo NC
+PDF_C         = "#27ae60"   # verde conforme
+PDF_NARANJA   = "#e67e22"   # acento causas
+COLORES_TORTA = ["#2e6da4","#e67e22","#27ae60","#8e44ad",
+                 "#c0392b","#16a085","#d35400","#2980b9"]
 
 # Criterios con sus causas
 CRITERIOS_PROD = [
@@ -182,17 +192,20 @@ def load_from_supabase(fecha_ini: str, fecha_fin: str) -> pd.DataFrame:
 # ═══════════════════════════════════════════
 # 📊  TORTAS
 # ═══════════════════════════════════════════
-def _pie(ax, label, qty_nc, total, color_nc=ROJO, color_c=VERDE):
+def _pie(ax, label, qty_nc, total, color_nc=None, color_c=None):
+    if color_nc is None: color_nc = PDF_NC
+    if color_c  is None: color_c  = PDF_AZUL_MED
     qty_c = max(total - qty_nc, 0)
     sizes = [qty_nc, qty_c] if qty_nc > 0 else [0, max(total, 1)]
     _, _, ats = ax.pie(sizes, colors=[color_nc, color_c],
-                       explode=[0.04, 0] if qty_nc > 0 else [0, 0],
+                       explode=[0.05, 0] if qty_nc > 0 else [0, 0],
                        autopct=lambda p: f"{p:.1f}%" if p > 0 else "",
                        startangle=90, pctdistance=0.75,
-                       wedgeprops=dict(edgecolor="white", linewidth=1.5))
+                       wedgeprops=dict(edgecolor="white", linewidth=2))
     for at in ats:
         at.set_fontsize(9); at.set_fontweight("bold"); at.set_color("white")
-    ax.set_title(label, fontsize=8, fontweight="bold", pad=5, wrap=True)
+    ax.set_title(label, fontsize=8, fontweight="bold", pad=5, wrap=True,
+                 color=PDF_AZUL)
 
 
 def make_pie_criterios(criterios, data, total, title) -> io.BytesIO:
@@ -213,8 +226,8 @@ def make_pie_criterios(criterios, data, total, title) -> io.BytesIO:
          color_nc="#8b0000", color_c="#1b5e20")
     axes[mid].set_title(f"RESUMEN\n{total_nc} NC / {total} ramos",
                         fontsize=9, fontweight="bold", color="#8b0000", pad=5)
-    fig.legend(handles=[mpatches.Patch(color=ROJO, label="No Conforme"),
-                        mpatches.Patch(color=VERDE, label="Conforme")],
+    fig.legend(handles=[mpatches.Patch(color=PDF_NC, label="No Conforme"),
+                        mpatches.Patch(color=PDF_AZUL_MED, label="Conforme")],
                loc="lower center", ncol=2, fontsize=9, frameon=False)
     plt.tight_layout(rect=[0, 0.04, 1, 1])
     buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
@@ -228,7 +241,7 @@ def make_pie_causas(criterio, causas_list, causas_marcadas, qty_nc, total) -> io
     conteos = {c: 1 for c in causas_marcadas}
     labels  = list(conteos.keys())
     sizes   = list(conteos.values())
-    clrs    = COLORES_CAUSAS[:len(labels)]
+    clrs    = COLORES_TORTA[:len(labels)]
 
     fig, ax = plt.subplots(figsize=(7, 4))
     wedges, texts, autotexts = ax.pie(
@@ -255,15 +268,15 @@ def make_pie_global(prod_data, mat_data, total) -> io.BytesIO:
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
     fig.suptitle("RESUMEN GLOBAL DE CALIDAD", fontsize=13, fontweight="bold", color=ROJO)
     _pie(axes[0], "NC Producto",   nc_p, total)
-    _pie(axes[1], "NC Materiales", nc_m, total, color_nc="#e65100")
-    axes[2].pie([nc_t, c_t] if nc_t > 0 else [0, 1], colors=[ROJO, VERDE],
+    _pie(axes[1], "NC Materiales", nc_m, total, color_nc=PDF_NARANJA)
+    axes[2].pie([nc_t, c_t] if nc_t > 0 else [0, 1], colors=[PDF_NC, PDF_AZUL_MED],
                 autopct=lambda p: f"{p:.1f}%" if p > 0 else "",
                 startangle=90, pctdistance=0.75,
                 wedgeprops=dict(edgecolor="white", linewidth=1.5),
                 explode=[0.04, 0] if nc_t > 0 else [0, 0])
     axes[2].set_title("C vs NC Total", fontsize=10, fontweight="bold", pad=6)
-    fig.legend(handles=[mpatches.Patch(color=ROJO, label="No Conforme"),
-                        mpatches.Patch(color=VERDE, label="Conforme")],
+    fig.legend(handles=[mpatches.Patch(color=PDF_NC, label="No Conforme"),
+                        mpatches.Patch(color=PDF_AZUL_MED, label="Conforme")],
                loc="lower center", ncol=2, fontsize=9, frameon=False)
     plt.tight_layout(rect=[0, 0.08, 1, 1])
     buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
@@ -273,145 +286,220 @@ def make_pie_global(prod_data, mat_data, total) -> io.BytesIO:
 # 📄  PDF
 # ═══════════════════════════════════════════
 def generar_pdf(record: dict) -> bytes:
+    import os
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
-                            topMargin=1.8*cm, bottomMargin=1.5*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm,
                             leftMargin=1.8*cm, rightMargin=1.8*cm)
-    styles = getSampleStyleSheet()
-    rl_r = colors.HexColor(ROJO); rl_v = colors.HexColor(VERDE)
-    rl_g = colors.HexColor(GRIS)
+    styles  = getSampleStyleSheet()
+    rl_azul  = colors.HexColor(PDF_AZUL)
+    rl_azulm = colors.HexColor(PDF_AZUL_MED)
+    rl_azulc = colors.HexColor(PDF_AZUL_CLAR)
+    rl_nc    = colors.HexColor(PDF_NC)
+    rl_c     = colors.HexColor(PDF_C)
+    rl_gris  = colors.HexColor(GRIS)
     story = []
 
-    sec = ParagraphStyle("sec", parent=styles["Heading2"], textColor=colors.white,
-                         backColor=rl_r, fontSize=11, spaceAfter=4, spaceBefore=10,
-                         leftIndent=4, borderPadding=(4,4,4,4))
+    sec = ParagraphStyle("sec", parent=styles["Heading2"],
+                         textColor=colors.white, backColor=rl_azul,
+                         fontSize=10, spaceAfter=4, spaceBefore=8,
+                         leftIndent=6, borderPadding=(4,4,4,6))
 
-    # — Portada con logo igual al Excel
-    import os
+    # ── ENCABEZADO ─────────────────────────────────────────────
     logo_path = "Legaci_flowers.png"
-    
-    # Tabla de encabezado: Logo | Título | Consecutivo/Fecha
     try:
         consecutivo_pdf = record.get("consecutivo", "001")
     except:
         consecutivo_pdf = "001"
-    
-    header_content = []
-    if os.path.exists(logo_path):
-        header_content.append(Image(logo_path, width=5*cm, height=1.8*cm))
-    else:
-        header_content.append(Paragraph("🌹 LEGACY FLOWERS",
-            ParagraphStyle("t", parent=styles["Title"], textColor=rl_r, fontSize=13)))
-    
-    header_data = [[
-        header_content[0],
-        Paragraph("Lista de Chequeo Aseguramiento de Calidad<br/><b>Producto Terminado en Finca</b>",
-                  ParagraphStyle("hdr", parent=styles["Normal"], fontSize=11, textColor=rl_r,
-                                 fontName="Helvetica-Bold", alignment=1)),
-        Table([
-            ["Consecutivo:", consecutivo_pdf],
-            ["Versión:", "001"],
-            ["Fecha:", record["fecha"]],
-            ["Página:", "1 de 1"],
-        ], colWidths=[2.5*cm, 2.5*cm],
-        style=TableStyle([
-            ("FONTSIZE",(0,0),(-1,-1),8),
-            ("GRID",(0,0),(-1,-1),0.5,colors.grey),
-            ("BACKGROUND",(0,0),(0,-1),rl_g),
-            ("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),
-            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-            ("PADDING",(0,0),(-1,-1),3),
-        ]))
-    ]]
-    
-    t_header = Table(header_data, colWidths=[5.5*cm, 7*cm, 5.5*cm])
+
+    logo_cell = Image(logo_path, width=5*cm, height=1.8*cm) if os.path.exists(logo_path) else                 Paragraph("<b>LEGACY FLOWERS</b>",
+                          ParagraphStyle("lf", parent=styles["Normal"],
+                                         fontSize=13, textColor=rl_azul))
+
+    t_meta_right = Table([
+        ["Consecutivo:", consecutivo_pdf],
+        ["Versión:", "001"],
+        ["Fecha:", record["fecha"]],
+        ["Página:", "1 de 1"],
+    ], colWidths=[2.6*cm, 2.4*cm])
+    t_meta_right.setStyle(TableStyle([
+        ("FONTSIZE",(0,0),(-1,-1),8),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#aaaaaa")),
+        ("BACKGROUND",(0,0),(0,-1),rl_azulc),
+        ("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),3),
+        ("BOTTOMPADDING",(0,0),(-1,-1),3),
+    ]))
+
+    t_header = Table([[
+        logo_cell,
+        Paragraph("Lista de Chequeo Aseguramiento de Calidad<br/>"
+                  "<b>Producto Terminado en Finca</b>",
+                  ParagraphStyle("hdr", parent=styles["Normal"], fontSize=11,
+                                 textColor=rl_azul, fontName="Helvetica-Bold",
+                                 alignment=1, leading=16)),
+        t_meta_right,
+    ]], colWidths=[5.5*cm, 7*cm, 5.5*cm])
     t_header.setStyle(TableStyle([
         ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("BOX",(0,0),(-1,-1),1,colors.black),
-        ("INNERGRID",(0,0),(-1,-1),0.5,colors.grey),
-        ("PADDING",(0,0),(-1,-1),6),
+        ("BOX",(0,0),(-1,-1),1.5,rl_azul),
+        ("INNERGRID",(0,0),(-1,-1),0.5,colors.HexColor("#aaaaaa")),
+        ("TOPPADDING",(0,0),(-1,-1),6),
+        ("BOTTOMPADDING",(0,0),(-1,-1),6),
+        ("LEFTPADDING",(0,0),(-1,-1),8),
     ]))
     story.append(t_header)
     story.append(Paragraph("F-CHK-PTF-001-V01",
-        ParagraphStyle("cod", parent=styles["Normal"], fontSize=8,
-                       alignment=0, spaceAfter=8, textColor=colors.grey)))
-    story.append(HRFlowable(width="100%", thickness=2, color=rl_r, spaceAfter=10))
+        ParagraphStyle("cod", parent=styles["Normal"], fontSize=7.5,
+                       textColor=colors.HexColor("#888888"), spaceAfter=6)))
+    story.append(HRFlowable(width="100%", thickness=2, color=rl_azul, spaceAfter=8))
 
+    # ── DATOS GENERALES ────────────────────────────────────────
     meta = [
-        ["Finca", record["finca"], "PO", record["po"]],
-        ["Fecha", record["fecha"], "Auditor", record["auditor"]],
-        ["Producto", record["producto"], "Ramos Procesados", str(record["ramos_proc"])],
-        ["Ramos Evaluados", str(record["ramos_eval"]), "% Muestra", f"{record['porc_muestra']:.1f}%"],
+        ["Finca",            record["finca"],    "PO",               record["po"]],
+        ["Fecha",            record["fecha"],     "Auditor",          record["auditor"]],
+        ["Producto",         record["producto"],  "Ramos Procesados", str(record["ramos_proc"])],
+        ["Ramos Evaluados",  str(record["ramos_eval"]),
+         "% Muestra",        f"{record['porc_muestra']:.1f}%"],
     ]
-    t = Table(meta, colWidths=[3.8*cm, 5.8*cm, 3.8*cm, 4.6*cm])
-    t.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(0,-1),rl_g),("BACKGROUND",(2,0),(2,-1),rl_g),
-        ("FONTNAME",(0,0),(-1,-1),"Helvetica"),("FONTSIZE",(0,0),(-1,-1),9),
-        ("GRID",(0,0),(-1,-1),0.5,colors.grey),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("ROWBACKGROUNDS",(0,0),(-1,-1),[colors.white,colors.HexColor("#f9f9f9")]),
-    ])); story.append(t); story.append(Spacer(1, 0.5*cm))
+    t_datos = Table(meta, colWidths=[3.5*cm, 6*cm, 3.5*cm, 5*cm])
+    t_datos.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(0,-1),rl_azulc),
+        ("BACKGROUND",(2,0),(2,-1),rl_azulc),
+        ("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),
+        ("FONTNAME",(2,0),(2,-1),"Helvetica-Bold"),
+        ("FONTNAME",(1,0),(-1,-1),"Helvetica"),
+        ("FONTSIZE",(0,0),(-1,-1),9),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#bbbbbb")),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),4),
+        ("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ("ROWBACKGROUNDS",(0,0),(-1,-1),[colors.white, colors.HexColor("#f4f8fc")]),
+    ]))
+    story.append(t_datos)
+    story.append(Spacer(1, 0.3*cm))
 
+    # ── RESUMEN NUMÉRICO ───────────────────────────────────────
     total = record["ramos_eval"]
-    t2 = Table([
-        ["TOTAL RAMOS EVALUADOS", str(total), "RAMOS CON FALLAS", str(record["total_fallas"])],
-        ["% CONFORME", f"{record['porc_c']:.2f}%", "% NO CONFORME", f"{record['porc_nc']:.2f}%"],
-    ], colWidths=[4.8*cm, 4.8*cm, 4.8*cm, 4.6*cm])
-    t2.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(0,-1),rl_g),("BACKGROUND",(2,0),(2,-1),rl_g),
-        ("FONTNAME",(0,0),(-1,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),10),
-        ("GRID",(0,0),(-1,-1),0.5,colors.grey),
-        ("TEXTCOLOR",(1,1),(1,1),rl_v),("TEXTCOLOR",(3,1),(3,1),rl_r),
-        ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-    ])); story.append(t2)
-    if record.get("obs_generales"):
-        story.append(Spacer(1,0.3*cm))
-        story.append(Paragraph(f"<b>Observaciones:</b> {record['obs_generales']}", styles["Normal"]))
+    nc    = record["total_fallas"]
+    t_res = Table([
+        ["TOTAL EVALUADOS", str(total), "RAMOS CON FALLAS", str(nc)],
+        ["% CONFORME",      f"{record['porc_c']:.2f}%",
+         "% NO CONFORME",   f"{record['porc_nc']:.2f}%"],
+    ], colWidths=[4.5*cm, 4.5*cm, 4.5*cm, 4.5*cm])
+    t_res.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(0,-1),rl_azulc),
+        ("BACKGROUND",(2,0),(2,-1),rl_azulc),
+        ("FONTNAME",(0,0),(-1,-1),"Helvetica-Bold"),
+        ("FONTSIZE",(0,0),(-1,-1),10),
+        ("GRID",(0,0),(-1,-1),0.5,colors.HexColor("#aaaaaa")),
+        ("TEXTCOLOR",(1,1),(1,1),rl_c),
+        ("TEXTCOLOR",(3,1),(3,1),rl_nc),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),6),
+        ("BOTTOMPADDING",(0,0),(-1,-1),6),
+        ("FONTSIZE",(1,1),(1,1),13),
+        ("FONTSIZE",(3,1),(3,1),13),
+    ]))
+    story.append(t_res)
+    story.append(Spacer(1, 0.35*cm))
 
-    # — Tortas Producto
+    # ── OBSERVACIONES ──────────────────────────────────────────
+    if record.get("obs_generales"):
+        obs_box = Table([[
+            Paragraph(f"<b>Observaciones:</b> {record['obs_generales']}",
+                      ParagraphStyle("obs", parent=styles["Normal"], fontSize=9, leading=13))
+        ]], colWidths=[18*cm])
+        obs_box.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,-1),colors.HexColor("#fffbe6")),
+            ("BOX",(0,0),(-1,-1),0.8,colors.HexColor("#f0c040")),
+            ("TOPPADDING",(0,0),(-1,-1),6),
+            ("BOTTOMPADDING",(0,0),(-1,-1),6),
+            ("LEFTPADDING",(0,0),(-1,-1),8),
+        ]))
+        story.append(obs_box)
+        story.append(Spacer(1, 0.3*cm))
+
+    # ── FIRMAS ─────────────────────────────────────────────────
+    firma_a = record.get("firma_auditor","") or "________________________________"
+    firma_r = record.get("firma_resp","")    or "________________________________"
+    t_firmas = Table([
+        [Paragraph(f"<b>Auditor:</b> {firma_a}",
+                   ParagraphStyle("fa", parent=styles["Normal"], fontSize=9)),
+         Paragraph(f"<b>Responsable:</b> {firma_r}",
+                   ParagraphStyle("fr", parent=styles["Normal"], fontSize=9))],
+        [HRFlowable(width="7cm", thickness=0.8, color=rl_azul),
+         HRFlowable(width="7cm", thickness=0.8, color=rl_azul)],
+        [Paragraph("<font size=8 color='#666666'>Firma Auditor de Calidad</font>",
+                   ParagraphStyle("lfa", parent=styles["Normal"], alignment=1)),
+         Paragraph("<font size=8 color='#666666'>Firma Responsable de Finca</font>",
+                   ParagraphStyle("lfr", parent=styles["Normal"], alignment=1))],
+    ], colWidths=[9*cm, 9*cm])
+    t_firmas.setStyle(TableStyle([
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),4),
+        ("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ("ALIGN",(0,2),(-1,2),"CENTER"),
+    ]))
+    story.append(t_firmas)
+
+    # ── TORTAS PRODUCTO ────────────────────────────────────────
     story.append(PageBreak())
     story.append(Paragraph("GRÁFICAS POR CRITERIO — PRODUCTO", sec))
     story.append(Spacer(1,0.3*cm))
     story.append(Image(make_pie_criterios(CRITERIOS_PROD, record["prod_data"], total, "Producto"),
                        width=17*cm, height=15*cm))
 
-    # — Tortas Materiales + Global
+    # ── TORTAS MATERIALES + GLOBAL ─────────────────────────────
     story.append(PageBreak())
     story.append(Paragraph("GRÁFICAS POR CRITERIO — MATERIALES", sec))
     story.append(Spacer(1,0.3*cm))
     story.append(Image(make_pie_criterios(CRITERIOS_MAT, record["mat_data"], total, "Materiales"),
-                       width=17*cm, height=11*cm))
+                       width=17*cm, height=9*cm))
     story.append(Spacer(1,0.4*cm))
     story.append(Paragraph("RESUMEN GLOBAL", sec))
     story.append(Image(make_pie_global(record["prod_data"], record["mat_data"], total),
-                       width=17*cm, height=6*cm))
+                       width=17*cm, height=6.5*cm))
 
-    # — Tortas de CAUSAS por criterio
-    story.append(PageBreak())
-    story.append(Paragraph("DETALLE DE CAUSAS POR CRITERIO", sec))
-    story.append(Spacer(1,0.3*cm))
-    hay_causas = False
-    # Causas Producto
+    # ── CAUSAS POR CRITERIO ────────────────────────────────────
+    causas_imgs = []
     for crit in CRITERIOS_PROD:
         d = record["prod_data"][crit]
         if d["status"] == "NC" and d.get("causas"):
-            hay_causas = True
-            img = make_pie_causas(crit, CAUSAS.get(crit, []), d["causas"], d["qty"], total)
-            if img:
-                story.append(Image(img, width=15*cm, height=7*cm))
-                story.append(Spacer(1,0.3*cm))
-    # Causas Materiales
+            img = make_pie_causas(crit, CAUSAS.get(crit,[]), d["causas"], d["qty"], total)
+            if img: causas_imgs.append(img)
     for crit in CRITERIOS_MAT:
         d = record["mat_data"][crit]
         if d["status"] == "NC" and d.get("causas"):
-            hay_causas = True
-            img = make_pie_causas(crit, CAUSAS_MAT.get(crit, []), d["causas"], d["qty"], total)
-            if img:
-                story.append(Image(img, width=15*cm, height=7*cm))
-                story.append(Spacer(1,0.3*cm))
-    if not hay_causas:
-        story.append(Paragraph("No se registraron causas específicas.", styles["Normal"]))
+            img = make_pie_causas(crit, CAUSAS_MAT.get(crit,[]), d["causas"], d["qty"], total)
+            if img: causas_imgs.append(img)
 
-    # — Tabla detallada
+    if causas_imgs:
+        story.append(PageBreak())
+        story.append(Paragraph("DETALLE DE CAUSAS POR CRITERIO", sec))
+        story.append(Spacer(1,0.3*cm))
+        # 2 tortas por fila
+        for i in range(0, len(causas_imgs), 2):
+            row_imgs = causas_imgs[i:i+2]
+            if len(row_imgs) == 2:
+                t_causas = Table([[
+                    Image(row_imgs[0], width=8.5*cm, height=6*cm),
+                    Image(row_imgs[1], width=8.5*cm, height=6*cm),
+                ]], colWidths=[9*cm, 9*cm])
+            else:
+                t_causas = Table([[
+                    Image(row_imgs[0], width=8.5*cm, height=6*cm), ""
+                ]], colWidths=[9*cm, 9*cm])
+            t_causas.setStyle(TableStyle([
+                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                ("ALIGN",(0,0),(-1,-1),"CENTER"),
+            ]))
+            story.append(t_causas)
+            story.append(Spacer(1,0.2*cm))
+
+    # ── TABLA DETALLADA ────────────────────────────────────────
     story.append(PageBreak())
     story.append(Paragraph("TABLA DETALLADA DE CRITERIOS Y OBSERVACIONES", sec))
     story.append(Spacer(1,0.3*cm))
@@ -422,32 +510,37 @@ def generar_pdf(record: dict) -> bytes:
                                ("Materiales", CRITERIOS_MAT, record["mat_data"])]:
         for c in crits:
             v = data[c]
-            causas_txt = ", ".join(v.get("causas", [])) if v.get("causas") else (v["obs"] or "—")
+            causas_txt = ", ".join(v.get("causas",[])) if v.get("causas") else (v.get("obs","") or "—")
             tabla.append([str(idx), cat, c, v["status"],
                           str(v["qty"]) if v["status"]=="NC" else "0", causas_txt])
-            fc.append((idx, colors.HexColor("#ffe0e0") if v["status"]=="NC" else colors.white))
+            fc.append((idx, v["status"]=="NC"))
             idx += 1
 
-    td = Table(tabla, colWidths=[0.7*cm,2.5*cm,4.5*cm,1.5*cm,1.8*cm,7*cm])
-    sty = [("BACKGROUND",(0,0),(-1,0),rl_r),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-           ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7.5),
-           ("GRID",(0,0),(-1,-1),0.4,colors.grey),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-           ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#f9f9f9")])]
-    for ri, col in fc:
-        if col != colors.white:
-            sty += [("BACKGROUND",(0,ri),(-1,ri),col),
-                    ("TEXTCOLOR",(3,ri),(3,ri),rl_r),
-                    ("FONTNAME",(3,ri),(3,ri),"Helvetica-Bold")]
-    td.setStyle(TableStyle(sty)); story.append(td)
-    story.append(Spacer(1,1.2*cm))
-    tf = Table([[f"Auditor: {record['firma_auditor'] or '________________________'}",
-                 f"Responsable: {record['firma_resp'] or '________________________'}"]],
-               colWidths=[9*cm,9*cm])
-    tf.setStyle(TableStyle([("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-                             ("FONTSIZE",(0,0),(-1,-1),9),("ALIGN",(0,0),(-1,-1),"CENTER")]))
-    story.append(tf)
+    td = Table(tabla, colWidths=[0.7*cm,2.5*cm,4.3*cm,1.6*cm,1.8*cm,7.1*cm])
+    sty = [
+        ("BACKGROUND",(0,0),(-1,0),rl_azul),
+        ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+        ("FONTSIZE",(0,0),(-1,-1),8),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#bbbbbb")),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),4),
+        ("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white, colors.HexColor("#f4f8fc")]),
+    ]
+    for ri, es_nc in fc:
+        if es_nc:
+            sty += [
+                ("BACKGROUND",(0,ri),(-1,ri),colors.HexColor("#fdecea")),
+                ("TEXTCOLOR",(3,ri),(3,ri),rl_nc),
+                ("FONTNAME",(3,ri),(3,ri),"Helvetica-Bold"),
+            ]
+    td.setStyle(TableStyle(sty))
+    story.append(td)
+
     doc.build(story)
     return buf.getvalue()
+
 
 # ═══════════════════════════════════════════
 # 🖼️  ENCABEZADO
