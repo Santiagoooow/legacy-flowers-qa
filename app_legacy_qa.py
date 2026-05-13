@@ -44,6 +44,13 @@ CRITERIOS_PROD = [
     "Fitosanidad en tallo/Follaje",
 ]
 
+CAUSAS_MAT = {
+    "Capuchón":      ["Material no corresponde", "Material mal ubicado", "Material en mal estado sucio/roto"],
+    "Preservante":   ["Material no corresponde", "Material mal ubicado", "Material en mal estado sucio/roto"],
+    "Caucho/Cinta":  ["Material no corresponde", "Material mal ubicado", "Material en mal estado sucio/roto"],
+    "UPC":           ["Material no corresponde", "Material mal ubicado", "Material en mal estado sucio/roto"],
+}
+
 CAUSAS = {
     "Condición de armado": [
         "Armado incorrecto (redondo-cuadrado)",
@@ -88,8 +95,7 @@ CAUSAS = {
 }
 
 CRITERIOS_MAT = [
-    "Capuchón", "Preservante", "Caucho/Cinta",
-    "UPC", "Hidratación", "Temperatura Cuarto Frio",
+    "Capuchón", "Preservante", "Caucho/Cinta", "UPC",
 ]
 
 COL_PROD = {
@@ -103,12 +109,10 @@ COL_PROD = {
     "Fitosanidad en tallo/Follaje": "fitosanidad_tallos",
 }
 COL_MAT = {
-    "Capuchón":              "capuchon",
-    "Preservante":           "preservante",
-    "Caucho/Cinta":          "caucho",
-    "UPC":                   "upc",
-    "Hidratación":           "hidratacion",
-    "Temperatura Cuarto Frio": "temperatura",
+    "Capuchón":     "capuchon",
+    "Preservante":  "preservante",
+    "Caucho/Cinta": "caucho",
+    "UPC":          "upc",
 }
 
 COLORES_CAUSAS = [
@@ -165,6 +169,7 @@ def save_to_supabase(record: dict):
         row[f"mat_{col}_status"] = d["status"]
         row[f"mat_{col}_qty"]    = d["qty"]
         row[f"mat_{col}_obs"]    = d["obs"]
+        row[f"mat_{col}_causas"] = ",".join(d.get("causas", []))
     sb.table("checklists").insert(row).execute()
 
 def load_from_supabase(fecha_ini: str, fecha_fin: str) -> pd.DataFrame:
@@ -483,7 +488,7 @@ def criterio_row(criterio, prefix, ramos_eval) -> dict:
         obs = ""
         causas_sel = []
         if is_nc:
-            causas_list = CAUSAS.get(criterio, [])
+            causas_list = CAUSAS.get(criterio, CAUSAS_MAT.get(criterio, []))
             if causas_list:
                 st.markdown("<div class='causas-box'>", unsafe_allow_html=True)
                 st.caption("**Causas:**")
