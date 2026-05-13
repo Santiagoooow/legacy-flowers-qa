@@ -467,17 +467,18 @@ def criterio_row(criterio, prefix, ramos_eval) -> dict:
 # 📝  FORMULARIO
 # ═══════════════════════════════════════════
 def render_form():
+    fk = st.session_state.get("form_key", 0)
     st.markdown('<div class="section-title">📋 DATOS GENERALES</div>', unsafe_allow_html=True)
     c1,c2 = st.columns(2)
     with c1:
-        finca    = st.text_input("Finca",    key="finca")
-        fecha    = st.date_input("Fecha",    date.today(), key="fecha")
-        producto = st.text_input("Producto", key="producto")
-        auditor  = st.text_input("Nombre Auditor", key="auditor")
+        finca    = st.text_input("Finca",    key=f"finca_{fk}")
+        fecha    = st.date_input("Fecha",    date.today(), key=f"fecha_{fk}")
+        producto = st.text_input("Producto", key=f"producto_{fk}")
+        auditor  = st.text_input("Nombre Auditor", key=f"auditor_{fk}")
     with c2:
-        po         = st.text_input("PO", key="po")
-        ramos_proc = st.number_input("Ramos Procesados",          min_value=0, step=1, key="ramos_proc")
-        ramos_eval = st.number_input("Ramos Evaluados (Muestra)", min_value=1, step=1, key="ramos_eval")
+        po         = st.text_input("PO", key=f"po_{fk}")
+        ramos_proc = st.number_input("Ramos Procesados",          min_value=0, step=1, key=f"ramos_proc_{fk}")
+        ramos_eval = st.number_input("Ramos Evaluados (Muestra)", min_value=1, step=1, key=f"ramos_eval_{fk}")
         porc_m = (ramos_eval/ramos_proc*100) if ramos_proc>0 else 0
         color_m = VERDE if porc_m>=10 else ROJO
         st.markdown(f"""<div style="background:#f5f5f5;border:1px solid #ccc;border-radius:4px;
@@ -498,7 +499,7 @@ def render_form():
 
     prod_data = {}
     for i,c in enumerate(CRITERIOS_PROD):
-        prod_data[c] = criterio_row(c, f"prod_{i}", ramos_eval)
+        prod_data[c] = criterio_row(c, f"prod_{i}_{fk}", ramos_eval)
         st.divider()
 
     # CRITERIOS MATERIALES
@@ -511,7 +512,7 @@ def render_form():
 
     mat_data = {}
     for i,c in enumerate(CRITERIOS_MAT):
-        mat_data[c] = criterio_row(c, f"mat_{i}", ramos_eval)
+        mat_data[c] = criterio_row(c, f"mat_{i}_{fk}", ramos_eval)
         st.divider()
 
     # CÁLCULOS
@@ -527,9 +528,9 @@ def render_form():
         </div>""", unsafe_allow_html=True)
     st.divider()
 
-    obs_gen       = st.text_area("Observaciones Generales", key="obs_gen")
-    firma_auditor = st.text_input("Firma Auditor",          key="firma_auditor")
-    firma_resp    = st.text_input("Firma Responsable",      key="firma_resp")
+    obs_gen       = st.text_area("Observaciones Generales", key=f"obs_gen_{fk}")
+    firma_auditor = st.text_input("Firma Auditor",          key=f"firma_auditor_{fk}")
+    firma_resp    = st.text_input("Firma Responsable",      key=f"firma_resp_{fk}")
 
     if st.button("💾 GUARDAR CHECKLIST", type="primary", use_container_width=True):
         record = {
@@ -545,11 +546,7 @@ def render_form():
             save_to_supabase(record)
             st.session_state["ultimo_record"] = record
             st.session_state["guardado_ok"] = True
-            # Limpiar formulario para nuevo registro
-            keys_to_clear = [k for k in st.session_state.keys() 
-                           if k not in ["ultimo_record", "guardado_ok"]]
-            for k in keys_to_clear:
-                del st.session_state[k]
+            st.session_state["form_key"] = st.session_state.get("form_key", 0) + 1
             st.rerun()
         except Exception as e:
             st.error(f"❌ Error al guardar: {e}")
