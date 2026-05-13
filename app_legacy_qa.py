@@ -1,5 +1,5 @@
 """
-Legacy Flowers QA — App completa con Supabase
+Legacy Flowers QA — App completa con Supabase + Causas por criterio
 """
 import io
 import math
@@ -14,7 +14,7 @@ import streamlit as st
 from supabase import create_client, Client
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
@@ -32,25 +32,75 @@ ROJO  = "#c00000"
 VERDE = "#2e7d32"
 GRIS  = "#d9d9d9"
 
+# Criterios con sus causas
 CRITERIOS_PROD = [
-    "Apertura", "Tamaño de Botón", "Condición de Botón",
-    "Fitosanidad en Botón", "Longitud Tallos",
-    "Condición tallos/Follaje", "Fitosanidad en tallos/Follaje",
+    "Condición de armado",
+    "Apertura",
+    "Tamaño de Botón",
+    "Condición de flor",
+    "Fitosanidad en Botón",
+    "Longitud de tallo",
+    "Condición de tallo/Follaje",
+    "Fitosanidad en tallo/Follaje",
 ]
+
+CAUSAS = {
+    "Condición de armado": [
+        "Armado incorrecto (redondo-cuadrado)",
+        "Desnivel",
+        "Incorrecto número de tallos",
+        "Incorrecta receta",
+        "Variedad restringida",
+    ],
+    "Apertura": [],
+    "Tamaño de Botón": [
+        "Inconsistencia de tamaños de cabeza dentro del mismo ramo",
+        "Tamaño de botón no pertenece a grado",
+    ],
+    "Condición de flor": [
+        "Maltrato en flor",
+        "Daño por presión",
+        "Sobredespétale/Residuos de pétalos",
+        "Bordeamiento/Flor quemada",
+        "Residuo de producto",
+        "Deshidratación",
+    ],
+    "Fitosanidad en Botón": [
+        "Hongos en flor",
+        "Presencia de plagas",
+        "Daño por plagas",
+    ],
+    "Longitud de tallo": [
+        "Tallo corto dentro del ramo",
+        "Longitud de ramo incorrecta",
+        'Mal corte "residuos"',
+    ],
+    "Condición de tallo/Follaje": [
+        "Maltrato en follaje",
+        "Follaje quemado/residuos",
+        "Remoción de follaje incorrecta",
+    ],
+    "Fitosanidad en tallo/Follaje": [
+        "Hongos en follaje",
+        "Presencia de plagas en follaje",
+        "Daño por plagas",
+    ],
+}
+
 CRITERIOS_MAT = [
     "Capuchón", "Preservante", "Caucho/Cinta",
     "UPC", "Hidratación", "Temperatura Cuarto Frio",
 ]
 
-# Mapeo criterio → columna BD
 COL_PROD = {
-    "Apertura":                    "apertura",
-    "Tamaño de Botón":             "tamano",
-    "Condición de Botón":          "condicion",
-    "Fitosanidad en Botón":        "fitosanidad",
-    "Longitud Tallos":             "longitud",
-    "Condición tallos/Follaje":    "condicion_tallos",
-    "Fitosanidad en tallos/Follaje": "fitosanidad_tallos",
+    "Condición de armado":        "armado",
+    "Apertura":                   "apertura",
+    "Tamaño de Botón":            "tamano",
+    "Condición de flor":          "condicion_flor",
+    "Fitosanidad en Botón":       "fitosanidad",
+    "Longitud de tallo":          "longitud",
+    "Condición de tallo/Follaje": "condicion_tallos",
+    "Fitosanidad en tallo/Follaje": "fitosanidad_tallos",
 }
 COL_MAT = {
     "Capuchón":              "capuchon",
@@ -60,6 +110,11 @@ COL_MAT = {
     "Hidratación":           "hidratacion",
     "Temperatura Cuarto Frio": "temperatura",
 }
+
+COLORES_CAUSAS = [
+    "#c00000","#e65100","#f57c00","#fbc02d","#388e3c",
+    "#0288d1","#7b1fa2","#c2185b","#00796b","#5d4037",
+]
 
 # ═══════════════════════════════════════════
 # 🎨  CSS
@@ -76,9 +131,7 @@ st.markdown(f"""
   .calc-row {{display:flex;justify-content:space-between;margin-bottom:6px;}}
   .nc {{color:{ROJO};font-weight:bold;}} .c {{color:{VERDE};font-weight:bold;}}
   .stRadio > div {{flex-direction:row !important;gap:10px;}}
-  div[data-testid="stNumberInput"] input {{
-    border:2px solid {ROJO} !important;background:#fff5f5 !important;
-    font-weight:bold;color:{ROJO};}}
+  .causas-box {{background:#fff5f5;border:1px solid #ffcccc;border-radius:6px;padding:10px;margin-top:6px;}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -87,10 +140,7 @@ st.markdown(f"""
 # ═══════════════════════════════════════════
 @st.cache_resource
 def get_supabase() -> Client:
-    url = st.secrets["supabase_url"]
-    key = st.secrets["supabase_key"]
-    return create_client(url, key)
-
+    return create_client(st.secrets["supabase_url"], st.secrets["supabase_key"])
 
 def save_to_supabase(record: dict):
     sb = get_supabase()
@@ -109,6 +159,7 @@ def save_to_supabase(record: dict):
         row[f"prod_{col}_status"] = d["status"]
         row[f"prod_{col}_qty"]    = d["qty"]
         row[f"prod_{col}_obs"]    = d["obs"]
+        row[f"prod_{col}_causas"] = ",".join(d.get("causas", []))
     for crit, col in COL_MAT.items():
         d = record["mat_data"][crit]
         row[f"mat_{col}_status"] = d["status"]
@@ -116,17 +167,12 @@ def save_to_supabase(record: dict):
         row[f"mat_{col}_obs"]    = d["obs"]
     sb.table("checklists").insert(row).execute()
 
-
 def load_from_supabase(fecha_ini: str, fecha_fin: str) -> pd.DataFrame:
     sb = get_supabase()
-    resp = (sb.table("checklists")
-              .select("*")
-              .gte("fecha", fecha_ini)
-              .lte("fecha", fecha_fin)
-              .order("fecha")
-              .execute())
+    resp = (sb.table("checklists").select("*")
+              .gte("fecha", fecha_ini).lte("fecha", fecha_fin)
+              .order("fecha").execute())
     return pd.DataFrame(resp.data) if resp.data else pd.DataFrame()
-
 
 # ═══════════════════════════════════════════
 # 📊  TORTAS
@@ -146,7 +192,7 @@ def _pie(ax, label, qty_nc, total, color_nc=ROJO, color_c=VERDE):
 
 def make_pie_criterios(criterios, data, total, title) -> io.BytesIO:
     n = len(criterios); cols = 3; rows = math.ceil(n / cols) + 1
-    fig, axes = plt.subplots(rows, cols, figsize=(cols*3.2, rows*3))
+    fig, axes = plt.subplots(rows, cols, figsize=(cols*3.5, rows*3.2))
     fig.suptitle(title, fontsize=13, fontweight="bold", color=ROJO, y=1.01)
     axes = axes.flatten()
     total_nc = 0
@@ -156,10 +202,11 @@ def make_pie_criterios(criterios, data, total, title) -> io.BytesIO:
     last = (rows-1)*cols
     for j in range(n, last): axes[j].set_visible(False)
     mid = last + 1
-    axes[last].set_visible(False); axes[last+2].set_visible(False)
+    axes[last].set_visible(False)
+    if last+2 < len(axes): axes[last+2].set_visible(False)
     _pie(axes[mid], f"RESUMEN {title}", total_nc, total,
          color_nc="#8b0000", color_c="#1b5e20")
-    axes[mid].set_title(f"RESUMEN {title}\n{total_nc} NC / {total} ramos",
+    axes[mid].set_title(f"RESUMEN\n{total_nc} NC / {total} ramos",
                         fontsize=9, fontweight="bold", color="#8b0000", pad=5)
     fig.legend(handles=[mpatches.Patch(color=ROJO, label="No Conforme"),
                         mpatches.Patch(color=VERDE, label="Conforme")],
@@ -169,11 +216,38 @@ def make_pie_criterios(criterios, data, total, title) -> io.BytesIO:
     plt.close(fig); buf.seek(0); return buf
 
 
+def make_pie_causas(criterio, causas_list, causas_marcadas, qty_nc, total) -> io.BytesIO:
+    """Torta de causas para un criterio NC."""
+    if not causas_marcadas:
+        return None
+    conteos = {c: 1 for c in causas_marcadas}
+    labels  = list(conteos.keys())
+    sizes   = list(conteos.values())
+    clrs    = COLORES_CAUSAS[:len(labels)]
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    wedges, texts, autotexts = ax.pie(
+        sizes, colors=clrs, startangle=90,
+        autopct=lambda p: f"{p:.1f}%",
+        pctdistance=0.75,
+        wedgeprops=dict(edgecolor="white", linewidth=1.5),
+    )
+    for at in autotexts:
+        at.set_fontsize(9); at.set_fontweight("bold"); at.set_color("white")
+    ax.set_title(f"Causas: {criterio}\n({qty_nc} ramos NC de {total} evaluados)",
+                 fontsize=10, fontweight="bold", color=ROJO, pad=8)
+    ax.legend(wedges, labels, loc="center left", bbox_to_anchor=(1, 0.5),
+              fontsize=8, frameon=False)
+    plt.tight_layout()
+    buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
+    plt.close(fig); buf.seek(0); return buf
+
+
 def make_pie_global(prod_data, mat_data, total) -> io.BytesIO:
     nc_p = sum(v["qty"] for v in prod_data.values())
     nc_m = sum(v["qty"] for v in mat_data.values())
     nc_t = nc_p + nc_m; c_t = max(total - nc_t, 0)
-    fig, axes = plt.subplots(1, 3, figsize=(11, 4))
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
     fig.suptitle("RESUMEN GLOBAL DE CALIDAD", fontsize=13, fontweight="bold", color=ROJO)
     _pie(axes[0], "NC Producto",   nc_p, total)
     _pie(axes[1], "NC Materiales", nc_m, total, color_nc="#e65100")
@@ -190,7 +264,6 @@ def make_pie_global(prod_data, mat_data, total) -> io.BytesIO:
     buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
     plt.close(fig); buf.seek(0); return buf
 
-
 # ═══════════════════════════════════════════
 # 📄  PDF
 # ═══════════════════════════════════════════
@@ -204,6 +277,11 @@ def generar_pdf(record: dict) -> bytes:
     rl_g = colors.HexColor(GRIS)
     story = []
 
+    sec = ParagraphStyle("sec", parent=styles["Heading2"], textColor=colors.white,
+                         backColor=rl_r, fontSize=11, spaceAfter=4, spaceBefore=10,
+                         leftIndent=4, borderPadding=(4,4,4,4))
+
+    # — Portada
     story.append(Paragraph("🌹 LEGACY FLOWERS",
         ParagraphStyle("t", parent=styles["Title"], textColor=rl_r, fontSize=15, spaceAfter=4)))
     story.append(Paragraph(
@@ -226,9 +304,9 @@ def generar_pdf(record: dict) -> bytes:
         ("ROWBACKGROUNDS",(0,0),(-1,-1),[colors.white,colors.HexColor("#f9f9f9")]),
     ])); story.append(t); story.append(Spacer(1, 0.5*cm))
 
-    total = record["ramos_eval"]; nc = record["total_fallas"]
+    total = record["ramos_eval"]
     t2 = Table([
-        ["TOTAL RAMOS EVALUADOS", str(total), "RAMOS CON FALLAS", str(nc)],
+        ["TOTAL RAMOS EVALUADOS", str(total), "RAMOS CON FALLAS", str(record["total_fallas"])],
         ["% CONFORME", f"{record['porc_c']:.2f}%", "% NO CONFORME", f"{record['porc_nc']:.2f}%"],
     ], colWidths=[4.8*cm, 4.8*cm, 4.8*cm, 4.6*cm])
     t2.setStyle(TableStyle([
@@ -240,19 +318,16 @@ def generar_pdf(record: dict) -> bytes:
     ])); story.append(t2)
     if record.get("obs_generales"):
         story.append(Spacer(1,0.3*cm))
-        story.append(Paragraph(f"<b>Observaciones:</b> {record['obs_generales']}",
-                                styles["Normal"]))
+        story.append(Paragraph(f"<b>Observaciones:</b> {record['obs_generales']}", styles["Normal"]))
 
-    sec = ParagraphStyle("sec", parent=styles["Heading2"], textColor=colors.white,
-                         backColor=rl_r, fontSize=11, spaceAfter=4, spaceBefore=10,
-                         leftIndent=4, borderPadding=(4,4,4,4))
-
+    # — Tortas Producto
     story.append(PageBreak())
     story.append(Paragraph("GRÁFICAS POR CRITERIO — PRODUCTO", sec))
     story.append(Spacer(1,0.3*cm))
     story.append(Image(make_pie_criterios(CRITERIOS_PROD, record["prod_data"], total, "Producto"),
-                       width=17*cm, height=14*cm))
+                       width=17*cm, height=15*cm))
 
+    # — Tortas Materiales + Global
     story.append(PageBreak())
     story.append(Paragraph("GRÁFICAS POR CRITERIO — MATERIALES", sec))
     story.append(Spacer(1,0.3*cm))
@@ -263,25 +338,42 @@ def generar_pdf(record: dict) -> bytes:
     story.append(Image(make_pie_global(record["prod_data"], record["mat_data"], total),
                        width=17*cm, height=6*cm))
 
+    # — Tortas de CAUSAS por criterio
+    story.append(PageBreak())
+    story.append(Paragraph("DETALLE DE CAUSAS POR CRITERIO", sec))
+    story.append(Spacer(1,0.3*cm))
+    hay_causas = False
+    for crit in CRITERIOS_PROD:
+        d = record["prod_data"][crit]
+        if d["status"] == "NC" and d.get("causas"):
+            hay_causas = True
+            img = make_pie_causas(crit, CAUSAS.get(crit, []), d["causas"], d["qty"], total)
+            if img:
+                story.append(Image(img, width=15*cm, height=7*cm))
+                story.append(Spacer(1,0.3*cm))
+    if not hay_causas:
+        story.append(Paragraph("No se registraron causas específicas.", styles["Normal"]))
+
+    # — Tabla detallada
     story.append(PageBreak())
     story.append(Paragraph("TABLA DETALLADA DE CRITERIOS Y OBSERVACIONES", sec))
     story.append(Spacer(1,0.3*cm))
 
-    tabla = [["#","Categoría","Criterio","Estado","Ramos NC","Observación"]]
-    fc = []
-    idx = 1
+    tabla = [["#","Categoría","Criterio","Estado","Ramos NC","Causas / Observación"]]
+    fc = []; idx = 1
     for cat, crits, data in [("Producto", CRITERIOS_PROD, record["prod_data"]),
                                ("Materiales", CRITERIOS_MAT, record["mat_data"])]:
         for c in crits:
             v = data[c]
+            causas_txt = ", ".join(v.get("causas", [])) if v.get("causas") else (v["obs"] or "—")
             tabla.append([str(idx), cat, c, v["status"],
-                          str(v["qty"]) if v["status"]=="NC" else "0", v["obs"] or "—"])
+                          str(v["qty"]) if v["status"]=="NC" else "0", causas_txt])
             fc.append((idx, colors.HexColor("#ffe0e0") if v["status"]=="NC" else colors.white))
             idx += 1
 
-    td = Table(tabla, colWidths=[0.7*cm,2.8*cm,5*cm,1.6*cm,2*cm,5.9*cm])
+    td = Table(tabla, colWidths=[0.7*cm,2.5*cm,4.5*cm,1.5*cm,1.8*cm,7*cm])
     sty = [("BACKGROUND",(0,0),(-1,0),rl_r),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-           ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),
+           ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7.5),
            ("GRID",(0,0),(-1,-1),0.4,colors.grey),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#f9f9f9")])]
     for ri, col in fc:
@@ -300,13 +392,12 @@ def generar_pdf(record: dict) -> bytes:
     doc.build(story)
     return buf.getvalue()
 
-
 # ═══════════════════════════════════════════
 # 🖼️  ENCABEZADO
 # ═══════════════════════════════════════════
 def render_header():
     hoy = datetime.now().strftime("%d/%m/%Y")
-    c1, c2, c3 = st.columns([0.8,2,1])
+    c1,c2,c3 = st.columns([0.8,2,1])
     with c1:
         try: st.image("logo.png", width=110)
         except: st.write("")
@@ -314,62 +405,79 @@ def render_header():
         st.markdown("<h2 class='title-red'>Lista de Chequeo Aseguramiento de Calidad<br>"
                     "Producto Terminado en Finca</h2>", unsafe_allow_html=True)
     with c3:
+        # Consecutivo automático desde Supabase
+        try:
+            sb = get_supabase()
+            resp = sb.table("checklists").select("id", count="exact").execute()
+            consecutivo = str((resp.count or 0) + 1).zfill(3)
+        except:
+            consecutivo = "---"
         st.markdown(f"""<table class="meta-table">
-            <tr><td>Consecutivo:</td><td><b>001</b></td></tr>
+            <tr><td>Consecutivo:</td><td><b>{consecutivo}</b></td></tr>
             <tr><td>Versión:</td><td><b>001</b></td></tr>
             <tr><td>Fecha:</td><td>{hoy}</td></tr></table>""", unsafe_allow_html=True)
-
 
 # ═══════════════════════════════════════════
 # 🧩  FILA DE CRITERIO
 # ═══════════════════════════════════════════
 def criterio_row(criterio, prefix, ramos_eval) -> dict:
-    ks, kq, ko = f"{prefix}_st", f"{prefix}_qty", f"{prefix}_obs"
+    ks = f"{prefix}_st"; kq = f"{prefix}_qty"; ko = f"{prefix}_obs"
     c1,c2,c3,c4 = st.columns([2,1.2,1.5,2.5])
     with c1: st.markdown(f"**{criterio}**")
     with c2:
         status = st.radio("E",["C","NC"],key=ks,horizontal=True,label_visibility="collapsed")
-    is_nc = status=="NC"
+    is_nc = status == "NC"
     with c3:
         if is_nc:
-            qty = st.number_input("NC",min_value=0,
+            qty = st.number_input("NC", min_value=0,
                                   max_value=int(ramos_eval) if ramos_eval>0 else 9999,
-                                  step=1,key=kq,help="Ramos que NO cumplen")
+                                  step=1, key=kq, help="Ramos que NO cumplen")
         else:
-            if kq in st.session_state: st.session_state[kq]=0
-            qty=0
+            if kq in st.session_state: st.session_state[kq] = 0
+            qty = 0
             st.markdown("<span style='color:#2e7d32;font-size:1.3rem;'>✔</span>",
                         unsafe_allow_html=True)
     with c4:
+        obs = ""
+        causas_sel = []
         if is_nc:
-            obs = st.text_input("Obs",key=ko,placeholder="Ej: maltrato…",
+            causas_list = CAUSAS.get(criterio, [])
+            if causas_list:
+                st.markdown("<div class='causas-box'>", unsafe_allow_html=True)
+                st.caption("**Causas:**")
+                for ci, causa in enumerate(causas_list):
+                    if st.checkbox(causa, key=f"{prefix}_causa_{ci}"):
+                        causas_sel.append(causa)
+                st.markdown("</div>", unsafe_allow_html=True)
+            obs = st.text_input("Obs adicional", key=ko,
+                                placeholder="Observación adicional…",
                                 label_visibility="collapsed")
-            if criterio=="Apertura":
-                sc=st.columns(3)
-                with sc[0]: st.checkbox("Abierto", key=f"{prefix}_ab")
-                with sc[1]: st.checkbox("Cerrado", key=f"{prefix}_cer")
-                with sc[2]: st.checkbox("Mezclado",key=f"{prefix}_mez")
+            # Apertura: sub-opciones especiales
+            if criterio == "Apertura":
+                sc = st.columns(3)
+                with sc[0]: st.checkbox("Abierto",  key=f"{prefix}_ab")
+                with sc[1]: st.checkbox("Cerrado",  key=f"{prefix}_cer")
+                with sc[2]: st.checkbox("Mezclado", key=f"{prefix}_mez")
         else:
-            if ko in st.session_state: st.session_state[ko]=""
-            obs=""; st.write("")
-    return {"status":status,"qty":int(qty),"obs":obs}
-
+            if ko in st.session_state: st.session_state[ko] = ""
+            st.write("")
+    return {"status": status, "qty": int(qty), "obs": obs, "causas": causas_sel}
 
 # ═══════════════════════════════════════════
 # 📝  FORMULARIO
 # ═══════════════════════════════════════════
 def render_form():
-    st.markdown('<div class="section-title">📋 DATOS GENERALES</div>',unsafe_allow_html=True)
-    c1,c2=st.columns(2)
+    st.markdown('<div class="section-title">📋 DATOS GENERALES</div>', unsafe_allow_html=True)
+    c1,c2 = st.columns(2)
     with c1:
         finca    = st.text_input("Finca",    key="finca")
-        fecha    = st.date_input("Fecha",    date.today(),key="fecha")
+        fecha    = st.date_input("Fecha",    date.today(), key="fecha")
         producto = st.text_input("Producto", key="producto")
-        auditor  = st.text_input("Nombre Auditor",key="auditor")
+        auditor  = st.text_input("Nombre Auditor", key="auditor")
     with c2:
-        po         = st.text_input("PO",key="po")
-        ramos_proc = st.number_input("Ramos Procesados",min_value=0,step=1,key="ramos_proc")
-        ramos_eval = st.number_input("Ramos Evaluados (Muestra)",min_value=1,step=1,key="ramos_eval")
+        po         = st.text_input("PO", key="po")
+        ramos_proc = st.number_input("Ramos Procesados",          min_value=0, step=1, key="ramos_proc")
+        ramos_eval = st.number_input("Ramos Evaluados (Muestra)", min_value=1, step=1, key="ramos_eval")
         porc_m = (ramos_eval/ramos_proc*100) if ramos_proc>0 else 0
         color_m = VERDE if porc_m>=10 else ROJO
         st.markdown(f"""<div style="background:#f5f5f5;border:1px solid #ccc;border-radius:4px;
@@ -377,139 +485,146 @@ def render_form():
             <span style="font-size:.8rem;color:#555;">% Muestra sobre procesado:</span><br>
             <span style="font-size:1.3rem;font-weight:bold;color:{color_m};">{porc_m:.1f}%</span>
             <span style="font-size:.75rem;color:#888;">&nbsp;({int(ramos_eval)} de {int(ramos_proc)} ramos)</span>
-            </div>""",unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
     st.divider()
 
-    st.markdown('<div class="section-title">✅ CRITERIO ESTÁNDAR PRODUCTO</div>',unsafe_allow_html=True)
-    h1,h2,h3,h4=st.columns([2,1.2,1.5,2.5])
+    # CRITERIOS PRODUCTO
+    st.markdown('<div class="section-title">✅ CRITERIO ESTÁNDAR PRODUCTO</div>', unsafe_allow_html=True)
+    h1,h2,h3,h4 = st.columns([2,1.2,1.5,2.5])
     with h1: st.caption("**Criterio**")
     with h2: st.caption("**Estado**")
     with h3: st.caption("**Cant. NC**")
-    with h4: st.caption("**Observación**")
-    prod_data={}
+    with h4: st.caption("**Causas / Observación**")
+
+    prod_data = {}
     for i,c in enumerate(CRITERIOS_PROD):
-        prod_data[c]=criterio_row(c,f"prod_{i}",ramos_eval); st.divider()
+        prod_data[c] = criterio_row(c, f"prod_{i}", ramos_eval)
+        st.divider()
 
-    st.markdown('<div class="section-title">📦 CRITERIO ESTÁNDAR MATERIALES</div>',unsafe_allow_html=True)
-    h1,h2,h3,h4=st.columns([2,1.2,1.5,2.5])
+    # CRITERIOS MATERIALES
+    st.markdown('<div class="section-title">📦 CRITERIO ESTÁNDAR MATERIALES</div>', unsafe_allow_html=True)
+    h1,h2,h3,h4 = st.columns([2,1.2,1.5,2.5])
     with h1: st.caption("**Criterio**")
     with h2: st.caption("**Estado**")
     with h3: st.caption("**Cant. NC**")
     with h4: st.caption("**Observación**")
-    mat_data={}
-    for i,c in enumerate(CRITERIOS_MAT):
-        mat_data[c]=criterio_row(c,f"mat_{i}",ramos_eval); st.divider()
 
-    st.markdown('<div class="section-title">📊 CÁLCULOS DE CALIDAD</div>',unsafe_allow_html=True)
-    total_f=sum(v["qty"] for v in prod_data.values())+sum(v["qty"] for v in mat_data.values())
-    porc_nc=(total_f/ramos_eval*100) if ramos_eval>0 else 0
-    porc_c=100-porc_nc
+    mat_data = {}
+    for i,c in enumerate(CRITERIOS_MAT):
+        mat_data[c] = criterio_row(c, f"mat_{i}", ramos_eval)
+        st.divider()
+
+    # CÁLCULOS
+    st.markdown('<div class="section-title">📊 CÁLCULOS DE CALIDAD</div>', unsafe_allow_html=True)
+    total_f = sum(v["qty"] for v in prod_data.values()) + sum(v["qty"] for v in mat_data.values())
+    porc_nc = (total_f/ramos_eval*100) if ramos_eval>0 else 0
+    porc_c  = 100 - porc_nc
     st.markdown(f"""<div class="calc-box">
         <div class="calc-row"><span>Total Ramos con Fallas:</span><span class="nc">{total_f}</span></div>
         <hr>
         <div class="calc-row"><span>% No Conforme:</span><span class="nc">{porc_nc:.2f}%</span></div>
         <div class="calc-row"><span>% Conforme:</span><span class="c">{porc_c:.2f}%</span></div>
-        </div>""",unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
     st.divider()
 
-    obs_gen       = st.text_area("Observaciones Generales",key="obs_gen")
-    firma_auditor = st.text_input("Firma Auditor",         key="firma_auditor")
-    firma_resp    = st.text_input("Firma Responsable",     key="firma_resp")
+    obs_gen       = st.text_area("Observaciones Generales", key="obs_gen")
+    firma_auditor = st.text_input("Firma Auditor",          key="firma_auditor")
+    firma_resp    = st.text_input("Firma Responsable",      key="firma_resp")
 
-    if st.button("💾 GUARDAR CHECKLIST",type="primary",use_container_width=True):
-        record={
-            "timestamp":datetime.now().isoformat(),
-            "fecha":str(fecha),"finca":finca,"producto":producto,"po":po,
-            "ramos_proc":int(ramos_proc),"ramos_eval":int(ramos_eval),
-            "porc_muestra":round(porc_m,2),"auditor":auditor,
-            "prod_data":prod_data,"mat_data":mat_data,
-            "total_fallas":total_f,"porc_nc":round(porc_nc,2),"porc_c":round(porc_c,2),
-            "obs_generales":obs_gen,"firma_auditor":firma_auditor,"firma_resp":firma_resp,
+    if st.button("💾 GUARDAR CHECKLIST", type="primary", use_container_width=True):
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "fecha": str(fecha), "finca": finca, "producto": producto, "po": po,
+            "ramos_proc": int(ramos_proc), "ramos_eval": int(ramos_eval),
+            "porc_muestra": round(porc_m,2), "auditor": auditor,
+            "prod_data": prod_data, "mat_data": mat_data,
+            "total_fallas": total_f, "porc_nc": round(porc_nc,2), "porc_c": round(porc_c,2),
+            "obs_generales": obs_gen, "firma_auditor": firma_auditor, "firma_resp": firma_resp,
         }
         try:
             save_to_supabase(record)
-            st.session_state["ultimo_record"]=record
-            st.success("✅ Guardado en Supabase correctamente.")
-            st.balloons()
+            st.session_state["ultimo_record"] = record
+            # Limpiar formulario para nuevo registro
+            keys_to_clear = [k for k in st.session_state.keys() if k != "ultimo_record"]
+            for k in keys_to_clear:
+                del st.session_state[k]
+            st.success("✅ Guardado correctamente. Formulario listo para nuevo registro.")
+            st.rerun()
         except Exception as e:
             st.error(f"❌ Error al guardar: {e}")
-
 
 # ═══════════════════════════════════════════
 # 📈  HISTORIAL + PDF
 # ═══════════════════════════════════════════
 def _row_to_record(row) -> dict:
-    prod_data={c:{"status":row.get(f"prod_{col}_status","C"),
-                  "qty":int(row.get(f"prod_{col}_qty",0) or 0),
-                  "obs":row.get(f"prod_{col}_obs","") or ""}
-               for c,col in COL_PROD.items()}
-    mat_data ={c:{"status":row.get(f"mat_{col}_status","C"),
-                  "qty":int(row.get(f"mat_{col}_qty",0) or 0),
-                  "obs":row.get(f"mat_{col}_obs","") or ""}
-               for c,col in COL_MAT.items()}
+    prod_data = {c: {
+        "status": row.get(f"prod_{col}_status","C"),
+        "qty":    int(row.get(f"prod_{col}_qty",0) or 0),
+        "obs":    row.get(f"prod_{col}_obs","") or "",
+        "causas": [x for x in (row.get(f"prod_{col}_causas","") or "").split(",") if x],
+    } for c,col in COL_PROD.items()}
+    mat_data = {c: {
+        "status": row.get(f"mat_{col}_status","C"),
+        "qty":    int(row.get(f"mat_{col}_qty",0) or 0),
+        "obs":    row.get(f"mat_{col}_obs","") or "",
+        "causas": [],
+    } for c,col in COL_MAT.items()}
     return {**row, "prod_data":prod_data, "mat_data":mat_data,
-            "ramos_eval":int(row.get("ramos_eval",1) or 1),
-            "porc_muestra":float(row.get("porc_muestra",0) or 0),
-            "total_fallas":int(row.get("total_fallas",0) or 0),
-            "porc_nc":float(row.get("porc_nc",0) or 0),
-            "porc_c":float(row.get("porc_c",100) or 100)}
-
+            "ramos_eval":   int(row.get("ramos_eval",1) or 1),
+            "porc_muestra": float(row.get("porc_muestra",0) or 0),
+            "total_fallas": int(row.get("total_fallas",0) or 0),
+            "porc_nc":      float(row.get("porc_nc",0) or 0),
+            "porc_c":       float(row.get("porc_c",100) or 100)}
 
 def render_dashboard():
     st.markdown('<div class="section-title">📈 HISTORIAL Y GENERACIÓN DE PDF</div>',
                 unsafe_allow_html=True)
-
     if "ultimo_record" in st.session_state:
         st.info("📄 Último checklist guardado listo para exportar:")
         if st.button("📥 Generar PDF del último checklist"):
             with st.spinner("Generando PDF…"):
-                pdf=generar_pdf(st.session_state["ultimo_record"])
-            nombre=f"QA_{st.session_state['ultimo_record']['finca']}_{st.session_state['ultimo_record']['fecha']}.pdf".replace(" ","_")
-            st.download_button("⬇️ Descargar PDF",data=pdf,file_name=nombre,
-                               mime="application/pdf",use_container_width=True)
+                pdf = generar_pdf(st.session_state["ultimo_record"])
+            nombre = f"QA_{st.session_state['ultimo_record']['finca']}_{st.session_state['ultimo_record']['fecha']}.pdf".replace(" ","_")
+            st.download_button("⬇️ Descargar PDF", data=pdf, file_name=nombre,
+                               mime="application/pdf", use_container_width=True)
     st.markdown("---")
-
     st.subheader("📅 Generar PDF por rango de fechas")
-    c1,c2=st.columns(2)
-    with c1: fi=st.date_input("Fecha inicio",key="fi")
-    with c2: ff=st.date_input("Fecha fin",   key="ff")
+    c1,c2 = st.columns(2)
+    with c1: fi = st.date_input("Fecha inicio", key="fi")
+    with c2: ff = st.date_input("Fecha fin",    key="ff")
 
     if st.button("🔍 Buscar registros del periodo"):
         with st.spinner("Consultando Supabase…"):
-            try:
-                df=load_from_supabase(str(fi),str(ff))
-            except Exception as e:
-                st.error(f"Error: {e}"); return
-        if df.empty:
-            st.warning("No hay registros en ese rango."); return
+            try: df = load_from_supabase(str(fi), str(ff))
+            except Exception as e: st.error(f"Error: {e}"); return
+        if df.empty: st.warning("No hay registros en ese rango."); return
         st.success(f"**{len(df)}** registros entre {fi} y {ff}.")
         st.dataframe(df[["fecha","finca","auditor","ramos_eval",
-                          "total_fallas","porc_c","porc_nc"]],use_container_width=True)
-        st.session_state["df_periodo"]=df
+                          "total_fallas","porc_c","porc_nc"]], use_container_width=True)
+        st.session_state["df_periodo"] = df
 
     if "df_periodo" in st.session_state and st.button("📄 Generar PDF consolidado del periodo"):
-        df=st.session_state["df_periodo"]
+        df = st.session_state["df_periodo"]
         with st.spinner("Generando PDF…"):
             from pypdf import PdfWriter, PdfReader
-            writer=PdfWriter()
+            writer = PdfWriter()
             for _,row in df.iterrows():
-                rec=_row_to_record(row.to_dict())
+                rec = _row_to_record(row.to_dict())
                 for page in PdfReader(io.BytesIO(generar_pdf(rec))).pages:
                     writer.add_page(page)
-            out=io.BytesIO(); writer.write(out); pdf_final=out.getvalue()
-        nombre=f"QA_Periodo_{fi}_{ff}.pdf".replace(" ","_")
-        st.download_button("⬇️ Descargar PDF del periodo",data=pdf_final,
-                           file_name=nombre,mime="application/pdf",use_container_width=True)
-
+            out = io.BytesIO(); writer.write(out); pdf_final = out.getvalue()
+        nombre = f"QA_Periodo_{fi}_{ff}.pdf".replace(" ","_")
+        st.download_button("⬇️ Descargar PDF del periodo", data=pdf_final,
+                           file_name=nombre, mime="application/pdf", use_container_width=True)
 
 # ═══════════════════════════════════════════
 # 🚀  MAIN
 # ═══════════════════════════════════════════
 def main():
     render_header()
-    tab1,tab2=st.tabs(["📝 Nuevo Checklist","📊 Historial & PDF"])
+    tab1,tab2 = st.tabs(["📝 Nuevo Checklist","📊 Historial & PDF"])
     with tab1: render_form()
     with tab2: render_dashboard()
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
