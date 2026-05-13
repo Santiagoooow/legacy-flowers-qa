@@ -425,23 +425,23 @@ def generar_pdf(record: dict) -> bytes:
     # ── FIRMAS ─────────────────────────────────────────────────
     firma_a = record.get("firma_auditor","") or "________________________________"
     firma_r = record.get("firma_resp","")    or "________________________________"
+    story.append(Spacer(1, 0.5*cm))
     t_firmas = Table([
         [Paragraph(f"<b>Auditor:</b> {firma_a}",
                    ParagraphStyle("fa", parent=styles["Normal"], fontSize=9)),
          Paragraph(f"<b>Responsable:</b> {firma_r}",
                    ParagraphStyle("fr", parent=styles["Normal"], fontSize=9))],
-        [HRFlowable(width="7cm", thickness=0.8, color=rl_azul),
-         HRFlowable(width="7cm", thickness=0.8, color=rl_azul)],
-        [Paragraph("<font size=8 color='#666666'>Firma Auditor de Calidad</font>",
+        [Paragraph("<font size=8 color='#666666'>_______________________________<br/>Firma Auditor de Calidad</font>",
                    ParagraphStyle("lfa", parent=styles["Normal"], alignment=1)),
-         Paragraph("<font size=8 color='#666666'>Firma Responsable de Finca</font>",
+         Paragraph("<font size=8 color='#666666'>_______________________________<br/>Firma Responsable de Finca</font>",
                    ParagraphStyle("lfr", parent=styles["Normal"], alignment=1))],
     ], colWidths=[9*cm, 9*cm])
     t_firmas.setStyle(TableStyle([
         ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),4),
-        ("BOTTOMPADDING",(0,0),(-1,-1),3),
-        ("ALIGN",(0,2),(-1,2),"CENTER"),
+        ("TOPPADDING",(0,0),(-1,-1),5),
+        ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),
+        ("LINEBELOW",(0,0),(-1,0),0.8,colors.HexColor(PDF_AZUL)),
     ]))
     story.append(t_firmas)
 
