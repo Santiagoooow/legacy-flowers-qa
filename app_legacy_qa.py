@@ -32,15 +32,15 @@ ROJO  = "#c00000"   # se mantiene en app
 VERDE = "#2e7d32"
 GRIS  = "#d9d9d9"
 
-# Paleta PDF corporativa
+# Paleta PDF corporativa sobria
 PDF_AZUL      = "#1a3a5c"   # azul oscuro encabezados
-PDF_AZUL_MED  = "#2e6da4"   # azul medio secciones
-PDF_AZUL_CLAR = "#d6e4f0"   # azul muy claro filas alternas
-PDF_NC        = "#c0392b"   # rojo NC
-PDF_C         = "#27ae60"   # verde conforme
-PDF_NARANJA   = "#e67e22"   # acento causas
-COLORES_TORTA = ["#2e6da4","#e67e22","#27ae60","#8e44ad",
-                 "#c0392b","#16a085","#d35400","#2980b9"]
+PDF_AZUL_MED  = "#4a6fa5"   # azul medio secciones
+PDF_AZUL_CLAR = "#eef2f7"   # gris azulado muy claro
+PDF_NC        = "#555555"   # gris oscuro NC
+PDF_C         = "#8a9bb0"   # gris azulado conforme
+PDF_NARANJA   = "#6b7f95"   # gris medio acento
+COLORES_TORTA = ["#4a6fa5","#6b7f95","#8a9bb0","#2c3e50",
+                 "#34495e","#5d6d7e","#7f8c8d","#95a5a6"]
 
 # Criterios con sus causas
 CRITERIOS_PROD = [
@@ -173,13 +173,13 @@ def save_to_supabase(record: dict):
         row[f"prod_{col}_status"] = d["status"]
         row[f"prod_{col}_qty"]    = d["qty"]
         row[f"prod_{col}_obs"]    = d["obs"]
-        row[f"prod_{col}_causas"] = ",".join(d.get("causas", []))
+        row[f"prod_{col}_causas"] = json.dumps(d.get("causas_ramos", {}))
     for crit, col in COL_MAT.items():
         d = record["mat_data"][crit]
         row[f"mat_{col}_status"] = d["status"]
         row[f"mat_{col}_qty"]    = d["qty"]
         row[f"mat_{col}_obs"]    = d["obs"]
-        row[f"mat_{col}_causas"] = ",".join(d.get("causas", []))
+        row[f"mat_{col}_causas"] = json.dumps(d.get("causas_ramos", {}))
     sb.table("checklists").insert(row).execute()
 
 def load_from_supabase(fecha_ini: str, fecha_fin: str) -> pd.DataFrame:
@@ -206,6 +206,56 @@ def _pie(ax, label, qty_nc, total, color_nc=None, color_c=None):
         at.set_fontsize(9); at.set_fontweight("bold"); at.set_color("white")
     ax.set_title(label, fontsize=8, fontweight="bold", pad=5, wrap=True,
                  color=PDF_AZUL)
+    ax.set_facecolor("#f8f9fa")
+
+
+def make_pie_global_causas(causas_ramos: dict, total: int) -> io.BytesIO:
+    """Torta única con todas las causas consolidadas."""
+    if not causas_ramos: return None
+    labels  = list(causas_ramos.keys())
+    valores = [max(v, 1) for v in causas_ramos.values()]
+    clrs    = COLORES_TORTA[:len(labels)]
+
+    fig, (ax_pie, ax_bar) = plt.subplots(1, 2, figsize=(14, 6))
+    fig.patch.set_facecolor("#f8f9fa")
+    fig.suptitle("Consolidado de Causas — Todos los Criterios",
+                 fontsize=12, fontweight="bold", color=PDF_AZUL)
+
+    # Torta
+    wedges, texts, ats = ax_pie.pie(
+        valores, colors=clrs,
+        autopct=lambda p: f"{p:.1f}%" if p > 1 else "",
+        startangle=90, pctdistance=0.75,
+        wedgeprops=dict(edgecolor="white", linewidth=1.5))
+    for at in ats:
+        at.set_fontsize(8); at.set_fontweight("bold"); at.set_color("white")
+    ax_pie.set_facecolor("#f8f9fa")
+    ax_pie.set_title("Distribución por causa", fontsize=10,
+                     fontweight="bold", color=PDF_AZUL)
+
+    # Barras horizontales
+    y_pos = range(len(labels))
+    bars = ax_bar.barh(list(y_pos), valores, color=clrs, edgecolor="white", height=0.6)
+    ax_bar.set_yticks(list(y_pos))
+    short_labels = [l[:35]+"…" if len(l)>35 else l for l in labels]
+    ax_bar.set_yticklabels(short_labels, fontsize=8)
+    ax_bar.set_xlabel("Ramos", fontsize=9, color=PDF_AZUL)
+    ax_bar.set_facecolor("#f8f9fa")
+    ax_bar.set_title("Ramos por causa", fontsize=10,
+                     fontweight="bold", color=PDF_AZUL)
+    ax_bar.spines["top"].set_visible(False)
+    ax_bar.spines["right"].set_visible(False)
+    for bar, val in zip(bars, valores):
+        pct = val/total*100 if total > 0 else 0
+        ax_bar.text(bar.get_width()+0.2, bar.get_y()+bar.get_height()/2,
+                    f"{val} ({pct:.1f}%)", va="center", fontsize=8, color=PDF_AZUL)
+    ax_bar.invert_yaxis()
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
+    plt.close(fig); buf.seek(0)
+    return buf
 
 
 def make_pie_criterios(criterios, data, total, title) -> io.BytesIO:
@@ -444,36 +494,44 @@ def generar_pdf(record: dict) -> bytes:
         ("LINEBELOW",(0,0),(-1,0),0.8,colors.HexColor(PDF_AZUL)),
     ]))
     story.append(t_firmas)
+    story.append(Spacer(1, 0.3*cm))
+    # Pie de página con línea
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                            color=colors.HexColor("#cccccc"), spaceAfter=4))
+    story.append(Paragraph(
+        f"<font size=7 color='#999999'>Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')} "
+        f"| Legacy Flowers S.A.S | F-CHK-PTF-001-V01</font>",
+        ParagraphStyle("pie", parent=styles["Normal"], alignment=1)))
 
     # ── TORTAS PRODUCTO ────────────────────────────────────────
     story.append(PageBreak())
     story.append(Paragraph("GRÁFICAS POR CRITERIO — PRODUCTO", sec))
     story.append(Spacer(1,0.3*cm))
     story.append(Image(make_pie_criterios(CRITERIOS_PROD, record["prod_data"], total, "Producto"),
-                       width=17*cm, height=15*cm))
+                       width=18*cm, height=18*cm))
 
     # ── TORTAS MATERIALES + GLOBAL ─────────────────────────────
     story.append(PageBreak())
     story.append(Paragraph("GRÁFICAS POR CRITERIO — MATERIALES", sec))
     story.append(Spacer(1,0.3*cm))
     story.append(Image(make_pie_criterios(CRITERIOS_MAT, record["mat_data"], total, "Materiales"),
-                       width=17*cm, height=9*cm))
+                       width=18*cm, height=12*cm))
     story.append(Spacer(1,0.4*cm))
     story.append(Paragraph("RESUMEN GLOBAL", sec))
     story.append(Image(make_pie_global(record["prod_data"], record["mat_data"], total),
-                       width=17*cm, height=6.5*cm))
+                       width=18*cm, height=7*cm))
 
     # ── CAUSAS POR CRITERIO ────────────────────────────────────
     causas_imgs = []
     for crit in CRITERIOS_PROD:
         d = record["prod_data"][crit]
-        if d["status"] == "NC" and d.get("causas"):
-            img = make_pie_causas(crit, CAUSAS.get(crit,[]), d["causas"], d["qty"], total)
+        if d["status"] == "NC" and d.get("causas_ramos"):
+            img = make_pie_causas(crit, CAUSAS.get(crit,[]), d["causas_ramos"], d["qty"], total)
             if img: causas_imgs.append(img)
     for crit in CRITERIOS_MAT:
         d = record["mat_data"][crit]
-        if d["status"] == "NC" and d.get("causas"):
-            img = make_pie_causas(crit, CAUSAS_MAT.get(crit,[]), d["causas"], d["qty"], total)
+        if d["status"] == "NC" and d.get("causas_ramos"):
+            img = make_pie_causas(crit, CAUSAS_MAT.get(crit,[]), d["causas_ramos"], d["qty"], total)
             if img: causas_imgs.append(img)
 
     if causas_imgs:
@@ -485,12 +543,12 @@ def generar_pdf(record: dict) -> bytes:
             row_imgs = causas_imgs[i:i+2]
             if len(row_imgs) == 2:
                 t_causas = Table([[
-                    Image(row_imgs[0], width=8.5*cm, height=6*cm),
-                    Image(row_imgs[1], width=8.5*cm, height=6*cm),
+                    Image(row_imgs[0], width=8.5*cm, height=7*cm),
+                    Image(row_imgs[1], width=8.5*cm, height=7*cm),
                 ]], colWidths=[9*cm, 9*cm])
             else:
                 t_causas = Table([[
-                    Image(row_imgs[0], width=8.5*cm, height=6*cm), ""
+                    Image(row_imgs[0], width=8.5*cm, height=7*cm), ""
                 ]], colWidths=[9*cm, 9*cm])
             t_causas.setStyle(TableStyle([
                 ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
@@ -498,6 +556,25 @@ def generar_pdf(record: dict) -> bytes:
             ]))
             story.append(t_causas)
             story.append(Spacer(1,0.2*cm))
+
+        # Torta global consolidada de TODAS las causas
+        todas_causas_ramos = {}
+        for crit in CRITERIOS_PROD:
+            d = record["prod_data"][crit]
+            for causa, ramos in d.get("causas_ramos", {}).items():
+                todas_causas_ramos[causa] = todas_causas_ramos.get(causa, 0) + ramos
+        for crit in CRITERIOS_MAT:
+            d = record["mat_data"][crit]
+            for causa, ramos in d.get("causas_ramos", {}).items():
+                todas_causas_ramos[causa] = todas_causas_ramos.get(causa, 0) + ramos
+
+        if todas_causas_ramos:
+            story.append(Spacer(1,0.4*cm))
+            story.append(Paragraph("RESUMEN GLOBAL DE TODAS LAS CAUSAS", sec))
+            story.append(Spacer(1,0.3*cm))
+            img_global_causas = make_pie_global_causas(todas_causas_ramos, total)
+            if img_global_causas:
+                story.append(Image(img_global_causas, width=18*cm, height=10*cm))
 
     # ── TABLA DETALLADA ────────────────────────────────────────
     story.append(PageBreak())
