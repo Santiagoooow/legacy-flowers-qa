@@ -2,6 +2,7 @@
 Legacy Flowers QA — App completa con Supabase + Causas por criterio
 """
 import io
+import json
 import math
 from datetime import datetime, date
 
