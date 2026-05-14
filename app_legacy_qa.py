@@ -261,6 +261,66 @@ def make_pie_global_causas(causas_ramos: dict, total: int) -> io.BytesIO:
     return buf
 
 
+def make_pie_criterio_completo(criterio, causas_ramos, qty_nc, total) -> io.BytesIO:
+    """2 tortas lado a lado: general NC/C + desglose por causas."""
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig.patch.set_facecolor("#f8f9fa")
+
+    # Torta 1 — General NC vs C
+    qty_c = max(total - qty_nc, 0)
+    ax1 = axes[0]
+    sizes1 = [qty_nc, qty_c] if qty_nc > 0 else [0, max(total,1)]
+    _, _, ats = ax1.pie(
+        sizes1, colors=[PDF_NC, PDF_AZUL_MED],
+        explode=[0.05, 0] if qty_nc > 0 else [0,0],
+        autopct=lambda p: f"{p:.1f}%" if p > 0 else "",
+        startangle=90, pctdistance=0.75,
+        wedgeprops=dict(edgecolor="white", linewidth=2))
+    for at in ats:
+        at.set_fontsize(10); at.set_fontweight("bold"); at.set_color("white")
+    ax1.set_title(f"NC vs Conforme
+{qty_nc} NC de {total} evaluados",
+                  fontsize=10, fontweight="bold", color=PDF_AZUL, pad=8)
+    ax1.set_facecolor("#f8f9fa")
+    ax1.legend(["No Conforme","Conforme"], loc="lower center",
+               fontsize=8, frameon=False, ncol=2)
+
+    # Torta 2 — Desglose por causas
+    ax2 = axes[1]
+    if causas_ramos:
+        labels2  = list(causas_ramos.keys())
+        valores2 = [max(v,1) for v in causas_ramos.values()]
+        clrs2    = COLORES_TORTA[:len(labels2)]
+        _, _, ats2 = ax2.pie(
+            valores2, colors=clrs2,
+            autopct=lambda p: f"{p:.1f}%" if p > 1 else "",
+            startangle=90, pctdistance=0.70,
+            wedgeprops=dict(edgecolor="white", linewidth=1.5))
+        for at in ats2:
+            at.set_fontsize(9); at.set_fontweight("bold"); at.set_color("white")
+        short = [l[:25]+"…" if len(l)>25 else l for l in labels2]
+        ax2.legend(short, loc="lower center", fontsize=7,
+                   frameon=False, ncol=1, bbox_to_anchor=(0.5,-0.15))
+        total_causas = sum(causas_ramos.values())
+        ax2.set_title(f"Causas — {criterio}
+{total_causas} ramos con causa asignada",
+                      fontsize=10, fontweight="bold", color=PDF_AZUL, pad=8)
+    else:
+        ax2.text(0.5, 0.5, "Sin causas
+asignadas",
+                 ha="center", va="center", fontsize=12, color="#888888",
+                 transform=ax2.transAxes)
+        ax2.set_title(f"Causas — {criterio}", fontsize=10,
+                      fontweight="bold", color=PDF_AZUL, pad=8)
+    ax2.set_facecolor("#f8f9fa")
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
+    plt.close(fig); buf.seek(0)
+    return buf
+
+
 def make_pie_criterios(criterios, data, total, title) -> io.BytesIO:
     n = len(criterios); cols = 3; rows = math.ceil(n / cols) + 1
     fig, axes = plt.subplots(rows, cols, figsize=(cols*3.5, rows*3.2))
@@ -598,11 +658,17 @@ def generar_pdf(record: dict) -> bytes:
         story.append(PageBreak())
         story.append(Paragraph("DETALLE POR CRITERIO — NC vs CONFORME y CAUSAS", sec))
         story.append(Spacer(1,0.3*cm))
-        for crit, cr, qty_nc in criterios_nc:
-            img = make_pie_criterio_completo(crit, cr, qty_nc, total)
-            if img:
-                story.append(Image(img, width=18*cm, height=7.5*cm))
-                story.append(Spacer(1,0.3*cm))
+        for crit, cr, qty_nc_crit in criterios_nc:
+            try:
+                cr_safe = cr if isinstance(cr, dict) else {}
+                img = make_pie_criterio_completo(crit, cr_safe, int(qty_nc_crit), int(total))
+                if img:
+                    story.append(Image(img, width=18*cm, height=7.5*cm))
+                    story.append(Spacer(1,0.3*cm))
+            except Exception as e:
+                story.append(Paragraph(f"Error generando gráfica: {crit}",
+                             ParagraphStyle("err", parent=styles["Normal"],
+                                            textColor=colors.red)))
 
         # Torta global consolidada de TODAS las causas
         todas_causas_ramos = {}
