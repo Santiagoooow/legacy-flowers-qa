@@ -37,11 +37,11 @@ GRIS  = "#d9d9d9"
 PDF_AZUL      = "#1a3a5c"   # azul oscuro encabezados
 PDF_AZUL_MED  = "#4a6fa5"   # azul medio secciones
 PDF_AZUL_CLAR = "#eef2f7"   # gris azulado muy claro
-PDF_NC        = "#555555"   # gris oscuro NC
-PDF_C         = "#8a9bb0"   # gris azulado conforme
+PDF_NC        = "#e57373"   # rojo pastel NC
+PDF_C         = "#81c784"   # verde pastel conforme
 PDF_NARANJA   = "#6b7f95"   # gris medio acento
-COLORES_TORTA = ["#4a6fa5","#6b7f95","#8a9bb0","#2c3e50",
-                 "#34495e","#5d6d7e","#7f8c8d","#95a5a6"]
+COLORES_TORTA = ["#4a6fa5","#e57373","#81c784","#ffb74d",
+                 "#ba68c8","#4db6ac","#f06292","#64b5f6"]
 
 # Criterios con sus causas
 CRITERIOS_PROD = [
