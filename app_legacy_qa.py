@@ -610,9 +610,13 @@ def generar_pdf(record: dict) -> bytes:
     for ri, es_nc in fc:
         if es_nc:
             sty += [
-                ("BACKGROUND",(0,ri),(-1,ri),colors.HexColor("#fdecea")),
+                ("BACKGROUND",(0,ri),(-1,ri),colors.HexColor("#ffd5d5")),  # rojo pastel
                 ("TEXTCOLOR",(3,ri),(3,ri),rl_nc),
                 ("FONTNAME",(3,ri),(3,ri),"Helvetica-Bold"),
+            ]
+        else:
+            sty += [
+                ("BACKGROUND",(0,ri),(-1,ri),colors.HexColor("#d5f5e3")),  # verde pastel
             ]
     td.setStyle(TableStyle(sty))
     story.append(td)
@@ -651,15 +655,18 @@ def render_header():
 # ═══════════════════════════════════════════
 def criterio_row(criterio, prefix, ramos_eval) -> dict:
     ks = f"{prefix}_st"; kq = f"{prefix}_qty"; ko = f"{prefix}_obs"
-    c1,c2,c3,c4 = st.columns([2,1.2,1.5,2.5])
-    with c1: st.markdown(f"**{criterio}**")
+
+    c1, c2, c3, c4 = st.columns([2, 1.2, 1.5, 2.5])
+    with c1:
+        st.markdown(f"**{criterio}**")
     with c2:
-        status = st.radio("E",["C","NC"],key=ks,horizontal=True,label_visibility="collapsed")
+        status = st.radio("E", ["C","NC"], key=ks, horizontal=True,
+                          label_visibility="collapsed")
     is_nc = status == "NC"
     with c3:
         if is_nc:
             qty = st.number_input("NC", min_value=0,
-                                  max_value=int(ramos_eval) if ramos_eval>0 else 9999,
+                                  max_value=int(ramos_eval) if ramos_eval > 0 else 9999,
                                   step=1, key=kq, help="Ramos que NO cumplen")
         else:
             if kq in st.session_state: st.session_state[kq] = 0
@@ -667,30 +674,64 @@ def criterio_row(criterio, prefix, ramos_eval) -> dict:
             st.markdown("<span style='color:#2e7d32;font-size:1.3rem;'>✔</span>",
                         unsafe_allow_html=True)
     with c4:
-        obs = ""
-        causas_sel = []
-        if is_nc:
-            causas_list = CAUSAS.get(criterio, CAUSAS_MAT.get(criterio, []))
-            if causas_list:
-                st.markdown("<div class='causas-box'>", unsafe_allow_html=True)
-                st.caption("**Causas:**")
-                for ci, causa in enumerate(causas_list):
-                    if st.checkbox(causa, key=f"{prefix}_causa_{ci}"):
-                        causas_sel.append(causa)
-                st.markdown("</div>", unsafe_allow_html=True)
-            obs = st.text_input("Obs adicional", key=ko,
-                                placeholder="Observación adicional…",
-                                label_visibility="collapsed")
-            # Apertura: sub-opciones especiales
-            if criterio == "Apertura":
-                sc = st.columns(3)
-                with sc[0]: st.checkbox("Abierto",  key=f"{prefix}_ab")
-                with sc[1]: st.checkbox("Cerrado",  key=f"{prefix}_cer")
-                with sc[2]: st.checkbox("Mezclado", key=f"{prefix}_mez")
-        else:
-            if ko in st.session_state: st.session_state[ko] = ""
-            st.write("")
-    return {"status": status, "qty": int(qty), "obs": obs, "causas": causas_sel}
+        st.write("")
+
+    causas_ramos = {}
+    obs = ""
+
+    if is_nc:
+        causas_list = CAUSAS.get(criterio, CAUSAS_MAT.get(criterio, []))
+        if causas_list:
+            st.markdown(
+                f"<div style='background:#eef2f7;border-left:4px solid #4a6fa5;"
+                f"padding:10px 16px;border-radius:6px;margin:6px 0;'>"
+                f"<b style='color:#1a3a5c;font-size:0.9rem;'>Causas — {criterio}</b></div>",
+                unsafe_allow_html=True)
+            for ci, causa in enumerate(causas_list):
+                ckey = f"{prefix}_causa_{ci}"
+                qkey = f"{prefix}_qtyc_{ci}"
+                col_chk, col_num, col_pct = st.columns([3, 1.5, 2])
+                with col_chk:
+                    selec = st.checkbox(causa, key=ckey)
+                with col_num:
+                    if selec:
+                        rc = st.number_input(
+                            "Ramos", min_value=0,
+                            max_value=int(qty) if qty > 0 else 9999,
+                            step=1, key=qkey,
+                            label_visibility="collapsed")
+                        causas_ramos[causa] = int(rc)
+                    else:
+                        if qkey in st.session_state:
+                            st.session_state[qkey] = 0
+                        st.write("")
+                with col_pct:
+                    if selec and qty > 0:
+                        v = causas_ramos.get(causa, 0)
+                        pct = v / int(qty) * 100
+                        col = "#c0392b" if pct > 50 else "#e67e22" if pct > 20 else "#4a6fa5"
+                        st.markdown(
+                            f"<div style='padding-top:5px;'>"
+                            f"<b style='color:{col};'>{pct:.1f}%</b>"
+                            f"<span style='color:#888;font-size:0.8rem;'> del NC</span></div>",
+                            unsafe_allow_html=True)
+            total_c = sum(causas_ramos.values())
+            if qty > 0:
+                pct_c = total_c / int(qty) * 100
+                col_c = "#2e7d32" if pct_c >= 100 else "#e67e22"
+                st.markdown(
+                    f"<small style='color:{col_c};'>"
+                    f"Cubiertos: <b>{total_c}/{int(qty)}</b> ({pct_c:.0f}%)</small>",
+                    unsafe_allow_html=True)
+
+        obs = st.text_input("Observación adicional", key=ko,
+                            placeholder="Observación adicional...",
+                            label_visibility="collapsed")
+    else:
+        if ko in st.session_state: st.session_state[ko] = ""
+
+    return {"status": status, "qty": int(qty), "obs": obs,
+            "causas_ramos": causas_ramos, "causas": list(causas_ramos.keys())}
 
 # ═══════════════════════════════════════════
 # 📝  FORMULARIO
