@@ -278,8 +278,7 @@ def make_pie_criterio_completo(criterio, causas_ramos, qty_nc, total) -> io.Byte
         wedgeprops=dict(edgecolor="white", linewidth=2))
     for at in ats:
         at.set_fontsize(10); at.set_fontweight("bold"); at.set_color("white")
-    ax1.set_title(f"NC vs Conforme
-{qty_nc} NC de {total} evaluados",
+    ax1.set_title(f"NC vs Conforme\n{qty_nc} NC de {total} evaluados",
                   fontsize=10, fontweight="bold", color=PDF_AZUL, pad=8)
     ax1.set_facecolor("#f8f9fa")
     ax1.legend(["No Conforme","Conforme"], loc="lower center",
@@ -302,12 +301,10 @@ def make_pie_criterio_completo(criterio, causas_ramos, qty_nc, total) -> io.Byte
         ax2.legend(short, loc="lower center", fontsize=7,
                    frameon=False, ncol=1, bbox_to_anchor=(0.5,-0.15))
         total_causas = sum(causas_ramos.values())
-        ax2.set_title(f"Causas — {criterio}
-{total_causas} ramos con causa asignada",
+        ax2.set_title(f"Causas — {criterio}\n{total_causas} ramos con causa asignada",
                       fontsize=10, fontweight="bold", color=PDF_AZUL, pad=8)
     else:
-        ax2.text(0.5, 0.5, "Sin causas
-asignadas",
+        ax2.text(0.5, 0.5, "Sin causas\nasignadas",
                  ha="center", va="center", fontsize=12, color="#888888",
                  transform=ax2.transAxes)
         ax2.set_title(f"Causas — {criterio}", fontsize=10,
