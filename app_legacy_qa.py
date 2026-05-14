@@ -498,9 +498,55 @@ def generar_pdf(record: dict) -> bytes:
     ]))
     story.append(t_firmas)
     story.append(Spacer(1, 0.3*cm))
-    # Pie de página con línea
+
+    # ── TABLA EN PÁGINA 1 ──────────────────────────────────────
+    story.append(Paragraph("TABLA DETALLADA DE CRITERIOS Y OBSERVACIONES", sec))
+    story.append(Spacer(1,0.2*cm))
+
+    tabla_p1 = [["#","Categoría","Criterio","Estado","Ramos NC","Causas / Observación"]]
+    fc_p1 = []; idx_p1 = 1
+    for cat, crits, data in [("Producto", CRITERIOS_PROD, record["prod_data"]),
+                               ("Materiales", CRITERIOS_MAT, record["mat_data"])]:
+        for c in crits:
+            v = data[c]
+            cr = v.get("causas_ramos", {})
+            if cr:
+                causas_txt = ", ".join([f"{k}: {vv} ramos" for k,vv in cr.items()])
+            elif v.get("obs"):
+                causas_txt = v["obs"]
+            else:
+                causas_txt = "—"
+            tabla_p1.append([str(idx_p1), cat, c, v["status"],
+                          str(v["qty"]) if v["status"]=="NC" else "0", causas_txt])
+            fc_p1.append((idx_p1, v["status"]=="NC"))
+            idx_p1 += 1
+
+    td_p1 = Table(tabla_p1, colWidths=[0.6*cm,2.3*cm,3.8*cm,1.4*cm,1.6*cm,8.3*cm])
+    sty_p1 = [
+        ("BACKGROUND",(0,0),(-1,0),rl_azul),
+        ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+        ("FONTSIZE",(0,0),(-1,-1),7),
+        ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#bbbbbb")),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),3),
+        ("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.HexColor("#d5f5e3"), colors.HexColor("#d5f5e3")]),
+    ]
+    for ri, es_nc in fc_p1:
+        if es_nc:
+            sty_p1 += [
+                ("BACKGROUND",(0,ri),(-1,ri),colors.HexColor("#ffd5d5")),
+                ("TEXTCOLOR",(3,ri),(3,ri),rl_nc),
+                ("FONTNAME",(3,ri),(3,ri),"Helvetica-Bold"),
+            ]
+    td_p1.setStyle(TableStyle(sty_p1))
+    story.append(td_p1)
+
+    # Pie de página
+    story.append(Spacer(1, 0.2*cm))
     story.append(HRFlowable(width="100%", thickness=0.5,
-                            color=colors.HexColor("#cccccc"), spaceAfter=4))
+                            color=colors.HexColor("#cccccc"), spaceAfter=3))
     story.append(Paragraph(
         f"<font size=7 color='#999999'>Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')} "
         f"| Legacy Flowers S.A.S | F-CHK-PTF-001-V01</font>",
@@ -537,28 +583,26 @@ def generar_pdf(record: dict) -> bytes:
             img = make_pie_causas(crit, CAUSAS_MAT.get(crit,[]), d["causas_ramos"], d["qty"], total)
             if img: causas_imgs.append(img)
 
-    if causas_imgs:
+    # Gráficas por criterio NC — una por página, 2 tortas lado a lado
+    criterios_nc = []
+    for crit in CRITERIOS_PROD:
+        d = record["prod_data"][crit]
+        if d["status"] == "NC":
+            criterios_nc.append((crit, d.get("causas_ramos",{}), d["qty"]))
+    for crit in CRITERIOS_MAT:
+        d = record["mat_data"][crit]
+        if d["status"] == "NC":
+            criterios_nc.append((crit, d.get("causas_ramos",{}), d["qty"]))
+
+    if criterios_nc:
         story.append(PageBreak())
-        story.append(Paragraph("DETALLE DE CAUSAS POR CRITERIO", sec))
+        story.append(Paragraph("DETALLE POR CRITERIO — NC vs CONFORME y CAUSAS", sec))
         story.append(Spacer(1,0.3*cm))
-        # 2 tortas por fila
-        for i in range(0, len(causas_imgs), 2):
-            row_imgs = causas_imgs[i:i+2]
-            if len(row_imgs) == 2:
-                t_causas = Table([[
-                    Image(row_imgs[0], width=8.5*cm, height=7*cm),
-                    Image(row_imgs[1], width=8.5*cm, height=7*cm),
-                ]], colWidths=[9*cm, 9*cm])
-            else:
-                t_causas = Table([[
-                    Image(row_imgs[0], width=8.5*cm, height=7*cm), ""
-                ]], colWidths=[9*cm, 9*cm])
-            t_causas.setStyle(TableStyle([
-                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-                ("ALIGN",(0,0),(-1,-1),"CENTER"),
-            ]))
-            story.append(t_causas)
-            story.append(Spacer(1,0.2*cm))
+        for crit, cr, qty_nc in criterios_nc:
+            img = make_pie_criterio_completo(crit, cr, qty_nc, total)
+            if img:
+                story.append(Image(img, width=18*cm, height=7.5*cm))
+                story.append(Spacer(1,0.3*cm))
 
         # Torta global consolidada de TODAS las causas
         todas_causas_ramos = {}
@@ -579,10 +623,10 @@ def generar_pdf(record: dict) -> bytes:
             if img_global_causas:
                 story.append(Image(img_global_causas, width=18*cm, height=10*cm))
 
-    # ── TABLA DETALLADA ────────────────────────────────────────
-    story.append(PageBreak())
-    story.append(Paragraph("TABLA DETALLADA DE CRITERIOS Y OBSERVACIONES", sec))
+    # ── TABLA DETALLADA (se pone en página 1 abajo) ────────────
     story.append(Spacer(1,0.3*cm))
+    story.append(Paragraph("TABLA DETALLADA DE CRITERIOS Y OBSERVACIONES", sec))
+    story.append(Spacer(1,0.2*cm))
 
     tabla = [["#","Categoría","Criterio","Estado","Ramos NC","Causas / Observación"]]
     fc = []; idx = 1
@@ -590,7 +634,13 @@ def generar_pdf(record: dict) -> bytes:
                                ("Materiales", CRITERIOS_MAT, record["mat_data"])]:
         for c in crits:
             v = data[c]
-            causas_txt = ", ".join(v.get("causas",[])) if v.get("causas") else (v.get("obs","") or "—")
+            cr = v.get("causas_ramos", {})
+            if cr:
+                causas_txt = ", ".join([f"{k}: {vv}" for k,vv in cr.items()])
+            elif v.get("obs"):
+                causas_txt = v["obs"]
+            else:
+                causas_txt = "—"
             tabla.append([str(idx), cat, c, v["status"],
                           str(v["qty"]) if v["status"]=="NC" else "0", causas_txt])
             fc.append((idx, v["status"]=="NC"))
