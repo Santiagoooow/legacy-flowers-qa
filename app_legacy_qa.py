@@ -62,6 +62,8 @@ CAUSAS_MAT = {
 }
 
 CAUSAS = {
+    "Apertura": ["Abierto", "Cerrado", "Mezclado"],
+    "Apertura": ["Abierto", "Cerrado", "Mezclado"],
     "Condición de armado": [
         "Armado incorrecto (redondo-cuadrado)",
         "Desnivel",
