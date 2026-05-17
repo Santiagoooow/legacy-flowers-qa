@@ -820,32 +820,40 @@ def criterio_row(criterio, prefix, ramos_eval) -> dict:
                             st.session_state[qkey] = 0
                         st.write("")
                 with col_pct:
-                    st.write("")
+                    if selec and int(st.session_state.get(f"{prefix}_qty", 0)) > 0:
+                        qty_manual = int(st.session_state.get(f"{prefix}_qty", 0))
+                        v = causas_ramos.get(causa, 0)
+                        pct = v / qty_manual * 100
+                        col = "#c0392b" if pct > 50 else "#e67e22" if pct > 20 else "#4a6fa5"
+                        st.markdown(
+                            f"<div style='padding-top:5px;'>"
+                            f"<b style='color:{col};'>{pct:.1f}%</b>"
+                            f"<span style='color:#888;font-size:0.8rem;'> del NC</span></div>",
+                            unsafe_allow_html=True)
+                    else:
+                        st.write("")
 
-            # Sumatoria automática
+            # Mostrar porcentaje por causa respecto al NC manual
             total_c = sum(causas_ramos.values())
 
-            # Actualizar qty con la suma de causas
-            if causas_ramos:
-                qty = total_c
+            for causa, ramos_c in causas_ramos.items():
+                pass  # porcentajes ya mostrados en col_pct abajo
 
-            # Mostrar sumatoria en tiempo real
-            if causas_ramos:
-                st.markdown(
-                    f"<div style='background:#d5f5e3;border-left:4px solid #27ae60;"
-                    f"padding:8px 14px;border-radius:6px;margin-top:6px;'>"
-                    f"<span style='font-size:1rem;color:#1e8449;'>"
-                    f"➕ Total NC = </span>"
-                    f"<b style='font-size:1.3rem;color:#1e8449;'>{total_c} ramos</b>"
-                    f"<span style='color:#888;font-size:0.85rem;'> (suma de causas)</span>"
-                    f"</div>",
-                    unsafe_allow_html=True)
+            # Advertencia si causas no cuadran con NC
+            if int(qty) > 0 and causas_ramos:
+                if total_c == int(qty):
+                    st.markdown(
+                        f"<small style='color:#1e8449;'>✅ Causas cuadran: {total_c}/{int(qty)} ramos</small>",
+                        unsafe_allow_html=True)
+                elif total_c > int(qty):
+                    st.markdown(
+                        f"<small style='color:#c0392b;'>⚠️ Suma de causas ({total_c}) supera NC ({int(qty)})</small>",
+                        unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        f"<small style='color:#e67e22;'>⚠️ Faltan {int(qty)-total_c} ramos por asignar ({total_c}/{int(qty)})</small>",
+                        unsafe_allow_html=True)
 
-                # Detalle por causa
-                detalles = " + ".join([f"{v} ({k[:15]})" for k,v in causas_ramos.items()])
-                st.markdown(
-                    f"<small style='color:#555;margin-left:8px;'>{detalles}</small>",
-                    unsafe_allow_html=True)
 
         obs = st.text_input("Observación adicional", key=ko,
                             placeholder="Observación adicional...",
