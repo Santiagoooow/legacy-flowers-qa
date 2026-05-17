@@ -64,7 +64,6 @@ CAUSAS_MAT = {
 
 CAUSAS = {
     "Apertura": ["Abierto", "Cerrado", "Mezclado"],
-    "Apertura": ["Abierto", "Cerrado", "Mezclado"],
     "Condición de armado": [
         "Armado incorrecto (redondo-cuadrado)",
         "Desnivel",
@@ -98,7 +97,7 @@ CAUSAS = {
     "Condición de tallo/Follaje": [
         "Maltrato en follaje",
         "Follaje quemado/residuos",
-        "Remoción de follaje incorrecta",
+        "Remoción de follaje/Desespine incorrecto",
     ],
     "Fitosanidad en tallo/Follaje": [
         "Hongos en follaje",
@@ -801,6 +800,7 @@ def criterio_row(criterio, prefix, ramos_eval) -> dict:
                 f"padding:10px 16px;border-radius:6px;margin:6px 0;'>"
                 f"<b style='color:#1a3a5c;font-size:0.9rem;'>Causas — {criterio}</b></div>",
                 unsafe_allow_html=True)
+
             for ci, causa in enumerate(causas_list):
                 ckey = f"{prefix}_causa_{ci}"
                 qkey = f"{prefix}_qtyc_{ci}"
@@ -811,7 +811,7 @@ def criterio_row(criterio, prefix, ramos_eval) -> dict:
                     if selec:
                         rc = st.number_input(
                             "Ramos", min_value=0,
-                            max_value=int(qty) if qty > 0 else 9999,
+                            max_value=9999,
                             step=1, key=qkey,
                             label_visibility="collapsed")
                         causas_ramos[causa] = int(rc)
@@ -820,39 +820,33 @@ def criterio_row(criterio, prefix, ramos_eval) -> dict:
                             st.session_state[qkey] = 0
                         st.write("")
                 with col_pct:
-                    if selec and qty > 0:
-                        v = causas_ramos.get(causa, 0)
-                        pct = v / int(qty) * 100
-                        col = "#c0392b" if pct > 50 else "#e67e22" if pct > 20 else "#4a6fa5"
-                        st.markdown(
-                            f"<div style='padding-top:5px;'>"
-                            f"<b style='color:{col};'>{pct:.1f}%</b>"
-                            f"<span style='color:#888;font-size:0.8rem;'> del NC</span></div>",
-                            unsafe_allow_html=True)
+                    st.write("")
+
+            # Sumatoria automática
             total_c = sum(causas_ramos.values())
-            if qty > 0 and causas_ramos:
-                if total_c == int(qty):
-                    st.markdown(
-                        f"<div style='background:#d5f5e3;border-left:3px solid #27ae60;"
-                        f"padding:6px 10px;border-radius:4px;margin-top:4px;'>"
-                        f"✅ <b style='color:#1e8449;'>Cuadra perfectamente: "
-                        f"{total_c}/{int(qty)} ramos</b></div>",
-                        unsafe_allow_html=True)
-                elif total_c > int(qty):
-                    st.markdown(
-                        f"<div style='background:#ffd5d5;border-left:3px solid #e74c3c;"
-                        f"padding:6px 10px;border-radius:4px;margin-top:4px;'>"
-                        f"⚠️ <b style='color:#c0392b;'>La suma de causas ({total_c}) "
-                        f"supera el NC ({int(qty)}). Corrígela.</b></div>",
-                        unsafe_allow_html=True)
-                else:
-                    faltantes = int(qty) - total_c
-                    st.markdown(
-                        f"<div style='background:#fff3cd;border-left:3px solid #f39c12;"
-                        f"padding:6px 10px;border-radius:4px;margin-top:4px;'>"
-                        f"⚠️ <b style='color:#d68910;'>Faltan {faltantes} ramos por asignar "
-                        f"({total_c}/{int(qty)})</b></div>",
-                        unsafe_allow_html=True)
+
+            # Actualizar qty con la suma de causas
+            if causas_ramos:
+                qty = total_c
+                st.session_state[kq] = total_c
+
+            # Mostrar sumatoria en tiempo real
+            if causas_ramos:
+                st.markdown(
+                    f"<div style='background:#d5f5e3;border-left:4px solid #27ae60;"
+                    f"padding:8px 14px;border-radius:6px;margin-top:6px;'>"
+                    f"<span style='font-size:1rem;color:#1e8449;'>"
+                    f"➕ Total NC = </span>"
+                    f"<b style='font-size:1.3rem;color:#1e8449;'>{total_c} ramos</b>"
+                    f"<span style='color:#888;font-size:0.85rem;'> (suma de causas)</span>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+
+                # Detalle por causa
+                detalles = " + ".join([f"{v} ({k[:15]})" for k,v in causas_ramos.items()])
+                st.markdown(
+                    f"<small style='color:#555;margin-left:8px;'>{detalles}</small>",
+                    unsafe_allow_html=True)
 
         obs = st.text_input("Observación adicional", key=ko,
                             placeholder="Observación adicional...",
@@ -942,21 +936,16 @@ def render_form():
             "total_fallas": total_f, "porc_nc": round(porc_nc,2), "porc_c": round(porc_c,2),
             "obs_generales": obs_gen, "firma_auditor": firma_auditor, "firma_resp": firma_resp,
         }
-        # Validar coherencia de causas antes de guardar
+        # Validar que criterios NC tengan al menos una causa si hay causas disponibles
         errores_causas = []
         for crit in CRITERIOS_PROD + CRITERIOS_MAT:
-            cat = "prod" if crit in CRITERIOS_PROD else "mat"
             d = prod_data[crit] if crit in CRITERIOS_PROD else mat_data[crit]
-            if d["status"] == "NC" and d.get("causas_ramos"):
-                total_causas = sum(d["causas_ramos"].values())
-                if total_causas != d["qty"] and d["qty"] > 0:
-                    diff = total_causas - d["qty"]
-                    signo = "+" if diff > 0 else ""
-                    errores_causas.append(
-                        f"**{crit}**: causas suman {total_causas}, NC es {d['qty']} ({signo}{diff})")
+            causas_disponibles = CAUSAS.get(crit, CAUSAS_MAT.get(crit, []))
+            if d["status"] == "NC" and causas_disponibles and not d.get("causas_ramos"):
+                errores_causas.append(f"**{crit}**: selecciona al menos una causa")
 
         if errores_causas:
-            st.error("❌ Las causas no cuadran con los ramos NC. Corrígelas antes de guardar:")
+            st.error("❌ Faltan causas en algunos criterios NC:")
             for err in errores_causas:
                 st.markdown(f"• {err}")
         else:
