@@ -830,13 +830,29 @@ def criterio_row(criterio, prefix, ramos_eval) -> dict:
                             f"<span style='color:#888;font-size:0.8rem;'> del NC</span></div>",
                             unsafe_allow_html=True)
             total_c = sum(causas_ramos.values())
-            if qty > 0:
-                pct_c = total_c / int(qty) * 100
-                col_c = "#2e7d32" if pct_c >= 100 else "#e67e22"
-                st.markdown(
-                    f"<small style='color:{col_c};'>"
-                    f"Cubiertos: <b>{total_c}/{int(qty)}</b> ({pct_c:.0f}%)</small>",
-                    unsafe_allow_html=True)
+            if qty > 0 and causas_ramos:
+                if total_c == int(qty):
+                    st.markdown(
+                        f"<div style='background:#d5f5e3;border-left:3px solid #27ae60;"
+                        f"padding:6px 10px;border-radius:4px;margin-top:4px;'>"
+                        f"✅ <b style='color:#1e8449;'>Cuadra perfectamente: "
+                        f"{total_c}/{int(qty)} ramos</b></div>",
+                        unsafe_allow_html=True)
+                elif total_c > int(qty):
+                    st.markdown(
+                        f"<div style='background:#ffd5d5;border-left:3px solid #e74c3c;"
+                        f"padding:6px 10px;border-radius:4px;margin-top:4px;'>"
+                        f"⚠️ <b style='color:#c0392b;'>La suma de causas ({total_c}) "
+                        f"supera el NC ({int(qty)}). Corrígela.</b></div>",
+                        unsafe_allow_html=True)
+                else:
+                    faltantes = int(qty) - total_c
+                    st.markdown(
+                        f"<div style='background:#fff3cd;border-left:3px solid #f39c12;"
+                        f"padding:6px 10px;border-radius:4px;margin-top:4px;'>"
+                        f"⚠️ <b style='color:#d68910;'>Faltan {faltantes} ramos por asignar "
+                        f"({total_c}/{int(qty)})</b></div>",
+                        unsafe_allow_html=True)
 
         obs = st.text_input("Observación adicional", key=ko,
                             placeholder="Observación adicional...",
@@ -926,14 +942,32 @@ def render_form():
             "total_fallas": total_f, "porc_nc": round(porc_nc,2), "porc_c": round(porc_c,2),
             "obs_generales": obs_gen, "firma_auditor": firma_auditor, "firma_resp": firma_resp,
         }
-        try:
-            save_to_supabase(record)
-            st.session_state["ultimo_record"] = record
-            st.session_state["guardado_ok"] = True
-            st.session_state["form_key"] = st.session_state.get("form_key", 0) + 1
-            st.rerun()
-        except Exception as e:
-            st.error(f"❌ Error al guardar: {e}")
+        # Validar coherencia de causas antes de guardar
+        errores_causas = []
+        for crit in CRITERIOS_PROD + CRITERIOS_MAT:
+            cat = "prod" if crit in CRITERIOS_PROD else "mat"
+            d = prod_data[crit] if crit in CRITERIOS_PROD else mat_data[crit]
+            if d["status"] == "NC" and d.get("causas_ramos"):
+                total_causas = sum(d["causas_ramos"].values())
+                if total_causas != d["qty"] and d["qty"] > 0:
+                    diff = total_causas - d["qty"]
+                    signo = "+" if diff > 0 else ""
+                    errores_causas.append(
+                        f"**{crit}**: causas suman {total_causas}, NC es {d['qty']} ({signo}{diff})")
+
+        if errores_causas:
+            st.error("❌ Las causas no cuadran con los ramos NC. Corrígelas antes de guardar:")
+            for err in errores_causas:
+                st.markdown(f"• {err}")
+        else:
+            try:
+                save_to_supabase(record)
+                st.session_state["ultimo_record"] = record
+                st.session_state["guardado_ok"] = True
+                st.session_state["form_key"] = st.session_state.get("form_key", 0) + 1
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error al guardar: {e}")
     
     # Mostrar mensaje de éxito después del rerun
     if st.session_state.get("guardado_ok"):
