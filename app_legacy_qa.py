@@ -944,18 +944,18 @@ def render_form():
                 errores_causas.append(f"**{crit}**: selecciona al menos una causa")
 
         if errores_causas:
-            st.error("❌ Faltan causas en algunos criterios NC:")
+            st.warning("⚠️ Advertencia: algunos criterios NC no tienen causas seleccionadas:")
             for err in errores_causas:
                 st.markdown(f"• {err}")
-        else:
-            try:
-                save_to_supabase(record)
-                st.session_state["ultimo_record"] = record
-                st.session_state["guardado_ok"] = True
-                st.session_state["form_key"] = st.session_state.get("form_key", 0) + 1
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Error al guardar: {e}")
+
+        try:
+            save_to_supabase(record)
+            st.session_state["ultimo_record"] = record
+            st.session_state["guardado_ok"] = True
+            st.session_state["form_key"] = st.session_state.get("form_key", 0) + 1
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ Error al guardar: {e}")
     
     # Mostrar mensaje de éxito después del rerun
     if st.session_state.get("guardado_ok"):
