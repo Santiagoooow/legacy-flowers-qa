@@ -828,7 +828,6 @@ def criterio_row(criterio, prefix, ramos_eval) -> dict:
             # Actualizar qty con la suma de causas
             if causas_ramos:
                 qty = total_c
-                st.session_state[kq] = total_c
 
             # Mostrar sumatoria en tiempo real
             if causas_ramos:
