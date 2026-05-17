@@ -971,18 +971,31 @@ def render_form():
 # ═══════════════════════════════════════════
 # 📈  HISTORIAL + PDF
 # ═══════════════════════════════════════════
+def _parse_causas_json(val):
+    """Convierte JSON guardado en Supabase a dict {causa: ramos}."""
+    if not val: return {}
+    try:
+        result = json.loads(val)
+        if isinstance(result, dict):
+            return {k: int(v) for k,v in result.items()}
+        return {}
+    except:
+        return {}
+
 def _row_to_record(row) -> dict:
     prod_data = {c: {
-        "status": row.get(f"prod_{col}_status","C"),
-        "qty":    int(row.get(f"prod_{col}_qty",0) or 0),
-        "obs":    row.get(f"prod_{col}_obs","") or "",
-        "causas": [x for x in (row.get(f"prod_{col}_causas","") or "").split(",") if x],
+        "status":      row.get(f"prod_{col}_status","C"),
+        "qty":         int(row.get(f"prod_{col}_qty",0) or 0),
+        "obs":         row.get(f"prod_{col}_obs","") or "",
+        "causas_ramos": _parse_causas_json(row.get(f"prod_{col}_causas","")),
+        "causas":      list(_parse_causas_json(row.get(f"prod_{col}_causas","")).keys()),
     } for c,col in COL_PROD.items()}
     mat_data = {c: {
-        "status": row.get(f"mat_{col}_status","C"),
-        "qty":    int(row.get(f"mat_{col}_qty",0) or 0),
-        "obs":    row.get(f"mat_{col}_obs","") or "",
-        "causas": [],
+        "status":      row.get(f"mat_{col}_status","C"),
+        "qty":         int(row.get(f"mat_{col}_qty",0) or 0),
+        "obs":         row.get(f"mat_{col}_obs","") or "",
+        "causas_ramos": _parse_causas_json(row.get(f"mat_{col}_causas","")),
+        "causas":      list(_parse_causas_json(row.get(f"mat_{col}_causas","")).keys()),
     } for c,col in COL_MAT.items()}
     return {**row, "prod_data":prod_data, "mat_data":mat_data,
             "ramos_eval":   int(row.get("ramos_eval",1) or 1),
