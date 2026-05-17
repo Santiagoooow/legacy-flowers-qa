@@ -56,10 +56,10 @@ CRITERIOS_PROD = [
 ]
 
 CAUSAS_MAT = {
-    "Capuchón":      ["Material no corresponde", "Material mal ubicado", "Material en mal estado sucio/roto"],
-    "Preservante":   ["Material no corresponde", "Material mal ubicado", "Material en mal estado sucio/roto"],
-    "Caucho/Cinta":  ["Material no corresponde", "Material mal ubicado", "Material en mal estado sucio/roto"],
-    "UPC":           ["Material no corresponde", "Material mal ubicado", "Material en mal estado sucio/roto"],
+    "Capuchón":     ["Capuchón no corresponde", "Capuchón mal ubicado", "Capuchón en mal estado sucio/roto"],
+    "Preservante":  ["Preservante no corresponde", "Preservante mal ubicado", "Preservante en mal estado sucio/roto"],
+    "Caucho/Cinta": ["Caucho/Cinta no corresponde", "Caucho/Cinta mal ubicado", "Caucho/Cinta en mal estado sucio/roto"],
+    "UPC":          ["UPC no corresponde", "UPC mal ubicado", "UPC en mal estado sucio/roto"],
 }
 
 CAUSAS = {
