@@ -684,54 +684,6 @@ def generar_pdf(record: dict) -> bytes:
             if img_global_causas:
                 story.append(Image(img_global_causas, width=18*cm, height=10*cm))
 
-    # ── TABLA DETALLADA (se pone en página 1 abajo) ────────────
-    story.append(Spacer(1,0.3*cm))
-    story.append(Paragraph("TABLA DETALLADA DE CRITERIOS Y OBSERVACIONES", sec))
-    story.append(Spacer(1,0.2*cm))
-
-    tabla = [["#","Categoría","Criterio","Estado","Ramos NC","Causas / Observación"]]
-    fc = []; idx = 1
-    for cat, crits, data in [("Producto", CRITERIOS_PROD, record["prod_data"]),
-                               ("Materiales", CRITERIOS_MAT, record["mat_data"])]:
-        for c in crits:
-            v = data[c]
-            cr = v.get("causas_ramos", {})
-            if cr:
-                causas_txt = ", ".join([f"{k}: {vv}" for k,vv in cr.items()])
-            elif v.get("obs"):
-                causas_txt = v["obs"]
-            else:
-                causas_txt = "—"
-            tabla.append([str(idx), cat, c, v["status"],
-                          str(v["qty"]) if v["status"]=="NC" else "0", causas_txt])
-            fc.append((idx, v["status"]=="NC"))
-            idx += 1
-
-    td = Table(tabla, colWidths=[0.7*cm,2.5*cm,4.3*cm,1.6*cm,1.8*cm,7.1*cm])
-    sty = [
-        ("BACKGROUND",(0,0),(-1,0),rl_azul),
-        ("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
-        ("FONTSIZE",(0,0),(-1,-1),8),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#bbbbbb")),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),4),
-        ("BOTTOMPADDING",(0,0),(-1,-1),4),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white, colors.HexColor("#f4f8fc")]),
-    ]
-    for ri, es_nc in fc:
-        if es_nc:
-            sty += [
-                ("BACKGROUND",(0,ri),(-1,ri),colors.HexColor("#ffd5d5")),  # rojo pastel
-                ("TEXTCOLOR",(3,ri),(3,ri),rl_nc),
-                ("FONTNAME",(3,ri),(3,ri),"Helvetica-Bold"),
-            ]
-        else:
-            sty += [
-                ("BACKGROUND",(0,ri),(-1,ri),colors.HexColor("#d5f5e3")),  # verde pastel
-            ]
-    td.setStyle(TableStyle(sty))
-    story.append(td)
 
     doc.build(story)
     return buf.getvalue()
