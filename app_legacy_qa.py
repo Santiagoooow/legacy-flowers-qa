@@ -168,6 +168,7 @@ def save_to_supabase(record: dict):
         "porc_nc": record["porc_nc"], "porc_c": record["porc_c"],
         "obs_generales": record["obs_generales"],
         "firma_auditor": record["firma_auditor"], "firma_resp": record["firma_resp"],
+        "fotos": record.get("fotos", "[]"),
     }
     for crit, col in COL_PROD.items():
         d = record["prod_data"][crit]
