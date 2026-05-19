@@ -1009,6 +1009,12 @@ def render_form():
                 st.markdown(f"• {err}")
 
         try:
+            # Subir fotos si las hay
+            foto_urls = []
+            if fotos_subidas:
+                with st.spinner(f"Subiendo {len(fotos_subidas)} foto(s)..."):
+                    foto_urls = subir_fotos(fotos_subidas, finca, str(fecha))
+            record["fotos"] = json.dumps(foto_urls)
             save_to_supabase(record)
             st.session_state["ultimo_record"] = record
             st.session_state["guardado_ok"] = True
