@@ -1011,20 +1011,27 @@ def render_form():
             for err in errores_causas:
                 st.markdown(f"• {err}")
 
-        try:
-            # Subir fotos si las hay
-            foto_urls = []
-            if fotos_subidas:
-                with st.spinner(f"Subiendo {len(fotos_subidas)} foto(s)..."):
+        # Subir fotos ANTES de guardar
+        foto_urls = []
+        if fotos_subidas:
+            with st.spinner(f"Subiendo {len(fotos_subidas)} foto(s)... por favor espera"):
+                try:
                     foto_urls = subir_fotos(fotos_subidas, finca, str(fecha))
-            record["fotos"] = json.dumps(foto_urls)
+                    st.success(f"✅ {len(foto_urls)} foto(s) subidas correctamente")
+                except Exception as e:
+                    st.error(f"❌ Error al subir fotos: {e}")
+                    foto_urls = []
+
+        record["fotos"] = json.dumps(foto_urls)
+
+        try:
             save_to_supabase(record)
             st.session_state["ultimo_record"] = record
             st.session_state["guardado_ok"] = True
             st.session_state["form_key"] = st.session_state.get("form_key", 0) + 1
             st.rerun()
         except Exception as e:
-            st.error(f"❌ Error al guardar: {e}")
+            st.error(f"❌ Error al guardar en base de datos: {e}")
     
     # Mostrar mensaje de éxito después del rerun
     if st.session_state.get("guardado_ok"):
