@@ -689,56 +689,68 @@ def generar_pdf(record: dict) -> bytes:
     fotos_urls = []
     try:
         fotos_raw = record.get("fotos", "[]")
-        fotos_urls = json.loads(fotos_raw) if fotos_raw else []
+        if isinstance(fotos_raw, list):
+            fotos_urls = fotos_raw
+        elif isinstance(fotos_raw, str):
+            fotos_urls = json.loads(fotos_raw) if fotos_raw and fotos_raw != "[]" else []
     except:
         fotos_urls = []
 
+    story.append(PageBreak())
+    story.append(Paragraph("EVIDENCIA FOTOGRÁFICA", sec))
+    story.append(Spacer(1, 0.3*cm))
+
     if fotos_urls:
-        story.append(PageBreak())
-        story.append(Paragraph("EVIDENCIA FOTOGRÁFICA", sec))
-        story.append(Spacer(1, 0.3*cm))
         story.append(Paragraph(
             f"Total de fotos: {len(fotos_urls)} | Fecha: {record['fecha']} | Finca: {record['finca']}",
             ParagraphStyle("info_fotos", parent=styles["Normal"],
                            fontSize=9, textColor=colors.HexColor("#555555"),
                            spaceAfter=10)))
 
-        # Mostrar fotos en cuadrícula de 2 por fila
         import urllib.request
         foto_imgs = []
-        for url in fotos_urls:
+        errores_foto = []
+        for idx, url in enumerate(fotos_urls):
             try:
                 foto_buf = io.BytesIO()
-                req = urllib.request.urlopen(url, timeout=5)
-                foto_buf.write(req.read())
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                response = urllib.request.urlopen(req, timeout=10)
+                foto_buf.write(response.read())
                 foto_buf.seek(0)
-                foto_imgs.append(foto_buf)
-            except:
-                pass
+                if foto_buf.getbuffer().nbytes > 0:
+                    foto_imgs.append(foto_buf)
+            except Exception as e:
+                errores_foto.append(f"Foto {idx+1}: {str(e)[:50]}")
 
-        for i in range(0, len(foto_imgs), 2):
-            row = foto_imgs[i:i+2]
-            if len(row) == 2:
-                t_fotos = Table([[
-                    Image(row[0], width=8.5*cm, height=6.5*cm),
-                    Image(row[1], width=8.5*cm, height=6.5*cm),
-                ]], colWidths=[9*cm, 9*cm])
-            else:
-                t_fotos = Table([[
-                    Image(row[0], width=8.5*cm, height=6.5*cm), ""
-                ]], colWidths=[9*cm, 9*cm])
-            t_fotos.setStyle(TableStyle([
-                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-                ("ALIGN",  (0,0), (-1,-1), "CENTER"),
-                ("BOX",    (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
-            ]))
-            story.append(t_fotos)
-            story.append(Spacer(1, 0.3*cm))
+        if foto_imgs:
+            for i in range(0, len(foto_imgs), 2):
+                row = foto_imgs[i:i+2]
+                if len(row) == 2:
+                    t_fotos = Table([[
+                        Image(row[0], width=8.5*cm, height=6.5*cm),
+                        Image(row[1], width=8.5*cm, height=6.5*cm),
+                    ]], colWidths=[9*cm, 9*cm])
+                else:
+                    t_fotos = Table([[
+                        Image(row[0], width=8.5*cm, height=6.5*cm), ""
+                    ]], colWidths=[9*cm, 9*cm])
+                t_fotos.setStyle(TableStyle([
+                    ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                    ("ALIGN",  (0,0), (-1,-1), "CENTER"),
+                    ("BOX",    (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
+                ]))
+                story.append(t_fotos)
+                story.append(Spacer(1, 0.3*cm))
+        else:
+            story.append(Paragraph(
+                f"Se registraron {len(fotos_urls)} foto(s) pero no se pudieron cargar en el PDF.",
+                ParagraphStyle("err_fotos", parent=styles["Normal"],
+                               fontSize=9, textColor=colors.HexColor("#c0392b"))))
+            for err in errores_foto:
+                story.append(Paragraph(f"• {err}",
+                    ParagraphStyle("err_det", parent=styles["Normal"],
+                                   fontSize=8, textColor=colors.HexColor("#888888"))))
     else:
-        # Sin fotos — solo mencionar en última página
-        story.append(Spacer(1, 0.5*cm))
-        story.append(Paragraph("EVIDENCIA FOTOGRÁFICA", sec))
-        story.append(Spacer(1, 0.3*cm))
         story.append(Paragraph(
             "No se registraron fotos de evidencia para este checklist.",
             ParagraphStyle("sin_fotos", parent=styles["Normal"],
