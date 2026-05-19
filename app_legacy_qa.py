@@ -779,8 +779,14 @@ def subir_fotos(archivos: list, finca: str, fecha: str) -> list:
                 file=datos,
                 file_options={"content-type": "image/jpeg"}
             )
-            url = sb.storage.from_("Evidencias").get_public_url(nombre)
-            urls.append(url)
+            url_result = sb.storage.from_("Evidencias").get_public_url(nombre)
+            # get_public_url puede retornar string o dict
+            if isinstance(url_result, dict):
+                url = url_result.get("publicUrl", url_result.get("data", {}).get("publicUrl", ""))
+            else:
+                url = str(url_result)
+            if url:
+                urls.append(url)
         except Exception as e:
             st.warning(f"No se pudo subir foto {i+1}: {e}")
     return urls
