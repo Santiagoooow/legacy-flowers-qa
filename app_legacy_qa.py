@@ -762,12 +762,12 @@ def subir_fotos(archivos: list, finca: str, fecha: str) -> list:
             ts = datetime.now().strftime("%H%M%S")
             nombre = f"{fecha}_{finca}_foto{i+1}_{ts}.jpg".replace(" ", "_")
             datos = archivo.getvalue()
-            sb.storage.from_("evidencias").upload(
+            sb.storage.from_("Evidencias").upload(
                 path=nombre,
                 file=datos,
                 file_options={"content-type": "image/jpeg"}
             )
-            url = sb.storage.from_("evidencias").get_public_url(nombre)
+            url = sb.storage.from_("Evidencias").get_public_url(nombre)
             urls.append(url)
         except Exception as e:
             st.warning(f"No se pudo subir foto {i+1}: {e}")
@@ -1026,7 +1026,8 @@ def render_form():
 
         try:
             save_to_supabase(record)
-            st.session_state["ultimo_record"] = record
+            # Guardar record completo con fotos ANTES del rerun
+            st.session_state["ultimo_record"] = record.copy()
             st.session_state["guardado_ok"] = True
             st.session_state["form_key"] = st.session_state.get("form_key", 0) + 1
             st.rerun()
@@ -1078,7 +1079,12 @@ def render_dashboard():
     st.markdown('<div class="section-title">📈 HISTORIAL Y GENERACIÓN DE PDF</div>',
                 unsafe_allow_html=True)
     if "ultimo_record" in st.session_state:
-        st.info("📄 Último checklist guardado listo para exportar:")
+        rec_actual = st.session_state["ultimo_record"]
+        fotos_count = len(json.loads(rec_actual.get("fotos", "[]")))
+        msg = f"📄 Último checklist guardado"
+        if fotos_count > 0:
+            msg += f" ({fotos_count} foto(s) incluidas)"
+        st.info(msg + " — listo para exportar:")
         if st.button("📥 Generar PDF del último checklist"):
             with st.spinner("Generando PDF…"):
                 pdf = generar_pdf(st.session_state["ultimo_record"])
