@@ -690,6 +690,28 @@ def generar_pdf(record: dict) -> bytes:
 
 
 # ═══════════════════════════════════════════
+# 📸  SUBIDA DE FOTOS A SUPABASE STORAGE
+# ═══════════════════════════════════════════
+def subir_fotos(archivos: list, finca: str, fecha: str) -> list:
+    """Sube fotos a Supabase Storage y retorna lista de URLs."""
+    sb = get_supabase()
+    urls = []
+    for archivo in archivos:
+        try:
+            nombre = f"{fecha}_{finca}_{archivo.name}".replace(" ", "_")
+            sb.storage.from_("evidencias").upload(
+                path=nombre,
+                file=archivo.getvalue(),
+                file_options={"content-type": archivo.type}
+            )
+            url = sb.storage.from_("evidencias").get_public_url(nombre)
+            urls.append(url)
+        except Exception as e:
+            st.warning(f"No se pudo subir {archivo.name}: {e}")
+    return urls
+
+
+# ═══════════════════════════════════════════
 # 🖼️  ENCABEZADO
 # ═══════════════════════════════════════════
 def render_header():
@@ -879,9 +901,29 @@ def render_form():
         </div>""", unsafe_allow_html=True)
     st.divider()
 
-    obs_gen       = st.text_area("Observaciones Generales", key=f"obs_gen_{fk}")
-    firma_auditor = st.text_input("Firma Auditor",          key=f"firma_auditor_{fk}")
-    firma_resp    = st.text_input("Firma Responsable",      key=f"firma_resp_{fk}")
+    obs_gen = st.text_area("Observaciones Generales", key=f"obs_gen_{fk}")
+
+    st.markdown('<div class="section-title">📸 EVIDENCIA FOTOGRÁFICA</div>',
+                unsafe_allow_html=True)
+    st.caption("Toma hasta 10 fotos de evidencia una por una")
+
+    fotos_subidas = []
+    num_fotos = st.number_input("¿Cuántas fotos vas a tomar?", 
+                                 min_value=0, max_value=10, step=1, 
+                                 key=f"num_fotos_{fk}")
+    
+    for i in range(int(num_fotos)):
+        foto = st.camera_input(f"📷 Foto {i+1}", key=f"foto_{fk}_{i}")
+        if foto:
+            fotos_subidas.append(foto)
+            st.success(f"✅ Foto {i+1} tomada")
+
+    if fotos_subidas:
+        st.markdown(f"<small style='color:#4a6fa5;'>{len(fotos_subidas)} foto(s) lista(s)</small>",
+                    unsafe_allow_html=True)
+
+    firma_auditor = st.text_input("Firma Auditor",     key=f"firma_auditor_{fk}")
+    firma_resp    = st.text_input("Firma Responsable", key=f"firma_resp_{fk}")
 
     if st.button("💾 GUARDAR CHECKLIST", type="primary", use_container_width=True):
         record = {
