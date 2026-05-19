@@ -756,18 +756,21 @@ def subir_fotos(archivos: list, finca: str, fecha: str) -> list:
     """Sube fotos a Supabase Storage y retorna lista de URLs."""
     sb = get_supabase()
     urls = []
-    for archivo in archivos:
+    for i, archivo in enumerate(archivos):
         try:
-            nombre = f"{fecha}_{finca}_{archivo.name}".replace(" ", "_")
+            # camera_input no tiene .name, usamos timestamp + índice
+            ts = datetime.now().strftime("%H%M%S")
+            nombre = f"{fecha}_{finca}_foto{i+1}_{ts}.jpg".replace(" ", "_")
+            datos = archivo.getvalue()
             sb.storage.from_("evidencias").upload(
                 path=nombre,
-                file=archivo.getvalue(),
-                file_options={"content-type": archivo.type}
+                file=datos,
+                file_options={"content-type": "image/jpeg"}
             )
             url = sb.storage.from_("evidencias").get_public_url(nombre)
             urls.append(url)
         except Exception as e:
-            st.warning(f"No se pudo subir {archivo.name}: {e}")
+            st.warning(f"No se pudo subir foto {i+1}: {e}")
     return urls
 
 
