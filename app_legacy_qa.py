@@ -775,12 +775,12 @@ def subir_fotos(archivos: list, finca: str, fecha: str) -> list:
             ts = datetime.now().strftime("%H%M%S")
             nombre = f"{fecha}_{finca}_foto{i+1}_{ts}.jpg".replace(" ", "_")
             datos = archivo.getvalue()
-            sb.storage.from_("Evidencias").upload(
+            sb.storage.from_("evidencias").upload(
                 path=nombre,
                 file=datos,
                 file_options={"content-type": "image/jpeg"}
             )
-            url_result = sb.storage.from_("Evidencias").get_public_url(nombre)
+            url_result = sb.storage.from_("evidencias").get_public_url(nombre)
             # get_public_url puede retornar string o dict
             if isinstance(url_result, dict):
                 url = url_result.get("publicUrl", url_result.get("data", {}).get("publicUrl", ""))
@@ -1131,44 +1131,56 @@ def render_dashboard():
             except Exception as e: st.error(f"Error: {e}"); return
         if df.empty: st.warning("No hay registros en ese rango."); return
         st.success(f"**{len(df)}** registros entre {fi} y {ff}.")
-        st.dataframe(df[["fecha","finca","auditor","ramos_eval",
-                          "total_fallas","porc_c","porc_nc"]], use_container_width=True)
         st.session_state["df_periodo"] = df
+        st.session_state.pop("pdf_individual", None)
+        st.session_state.pop("pdf_periodo", None)
 
     if "df_periodo" in st.session_state:
-        df = st.session_state["df_periodo"]
+        df = st.session_state["df_periodo"].copy().reset_index(drop=True)
+        # Agregar columna identificador
+        df.insert(0, "#", [f"#{i+1}" for i in range(len(df))])
+        st.dataframe(df[["#","fecha","finca","auditor","ramos_eval",
+                          "total_fallas","porc_c","porc_nc"]], use_container_width=True)
         st.markdown("**Selecciona qué PDF generar:**")
         col_a, col_b = st.columns(2)
-        
+
         with col_a:
             # PDF de un registro específico
-            opciones = [f"{row['fecha']} | {row['finca']} | {row['auditor']}" 
-                       for _, row in df.iterrows()]
+            opciones = [f"#{i+1} | {row['fecha']} | {row['finca']} | {row['auditor']}"
+                       for i, (_, row) in enumerate(st.session_state["df_periodo"].iterrows())]
             seleccionado = st.selectbox("📋 PDF de un registro específico:", opciones, key="sel_registro")
             if st.button("📥 Generar PDF del registro seleccionado"):
                 idx_sel = opciones.index(seleccionado)
-                rec = _row_to_record(df.iloc[idx_sel].to_dict())
+                rec = _row_to_record(st.session_state["df_periodo"].iloc[idx_sel].to_dict())
                 with st.spinner("Generando PDF…"):
                     pdf = generar_pdf(rec)
                 nombre = f"QA_{rec['finca']}_{rec['fecha']}.pdf".replace(" ","_")
-                st.download_button("⬇️ Descargar PDF", data=pdf,
-                                   file_name=nombre, mime="application/pdf",
+                st.session_state["pdf_individual"] = (pdf, nombre)
+
+            if "pdf_individual" in st.session_state:
+                pdf_i, nombre_i = st.session_state["pdf_individual"]
+                st.download_button("⬇️ Descargar PDF", data=pdf_i,
+                                   file_name=nombre_i, mime="application/pdf",
                                    use_container_width=True, key="dl_individual")
-        
+
         with col_b:
             # PDF consolidado del periodo
             if st.button("📄 Generar PDF consolidado del periodo"):
                 with st.spinner("Generando PDF…"):
                     from pypdf import PdfWriter, PdfReader
                     writer = PdfWriter()
-                    for _,row in df.iterrows():
+                    for _, row in st.session_state["df_periodo"].iterrows():
                         rec = _row_to_record(row.to_dict())
                         for page in PdfReader(io.BytesIO(generar_pdf(rec))).pages:
                             writer.add_page(page)
                     out = io.BytesIO(); writer.write(out); pdf_final = out.getvalue()
                 nombre = f"QA_Periodo_{fi}_{ff}.pdf".replace(" ","_")
-                st.download_button("⬇️ Descargar PDF del periodo", data=pdf_final,
-                                   file_name=nombre, mime="application/pdf",
+                st.session_state["pdf_periodo"] = (pdf_final, nombre)
+
+            if "pdf_periodo" in st.session_state:
+                pdf_p, nombre_p = st.session_state["pdf_periodo"]
+                st.download_button("⬇️ Descargar PDF del periodo", data=pdf_p,
+                                   file_name=nombre_p, mime="application/pdf",
                                    use_container_width=True, key="dl_periodo")
 
 # ═══════════════════════════════════════════
